@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>同步器計算機</title>
+<style>
+  :root{
+    --bg:#0f1420; --card:#1a2233; --card2:#222c42; --line:#2c3752;
+    --text:#e6ecfb; --muted:#8b97b5; --accent:#5b8cff; --accent2:#3ad1c5;
+    --gold:#f5c451; --red:#ff6b8a; --combat:#8b7dff; --ok:#4ec38a; --warn:#ffab5b;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;
+    line-height:1.5; font-size:15px; padding:14px; padding-bottom:60px;
+  }
+  .wrap{max-width:960px; margin:0 auto;}
+  h1{font-size:20px; margin:2px 0 2px;}
+  .sub{color:var(--muted); font-size:12.5px; margin-bottom:14px;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin-bottom:14px;}
+  .card h2{font-size:15px; margin:0 0 10px; display:flex; align-items:center; gap:8px;}
+  .card h2 .tag{font-size:11px; color:var(--muted); font-weight:400;}
+  .grid2{display:grid; grid-template-columns:1fr; gap:14px;}
+  @media(min-width:760px){ .grid2{grid-template-columns:1fr 1fr;} }
+
+  /* summary */
+  .sumhead{display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; margin-bottom:8px;}
+  .big{font-size:30px; font-weight:700; line-height:1;}
+  .sumhead .lvlwrap{display:flex; flex-direction:column;}
+  .pill{font-size:11px; padding:3px 8px; border-radius:20px; background:var(--card2); color:var(--muted);}
+  .stats{display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:6px;}
+  @media(min-width:520px){ .stats{grid-template-columns:repeat(3,1fr);} }
+  .stat{background:var(--card2); border-radius:10px; padding:8px 10px;}
+  .stat .k{font-size:11px; color:var(--muted);}
+  .stat .v{font-size:15px; font-weight:600; margin-top:2px;}
+  .costline{display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:13px;}
+  .costline b{font-weight:600;}
+  .c-gold{color:var(--gold);} .c-red{color:var(--red);} .c-combat{color:var(--combat);}
+  .bnote{margin-top:8px; font-size:12.5px; color:var(--muted);}
+  .bnote .hl{color:var(--warn); font-weight:600;}
+
+  /* calculator */
+  .seg{display:flex; background:var(--card2); border-radius:10px; padding:3px; margin-bottom:12px;}
+  .seg button{flex:1; background:none; border:none; color:var(--muted); padding:8px; border-radius:8px; font-size:13.5px; cursor:pointer; font-weight:600;}
+  .seg button.on{background:var(--accent); color:#fff;}
+  label.fld{display:block; font-size:12.5px; color:var(--muted); margin:0 0 5px;}
+  input,select{
+    background:var(--card2); border:1px solid var(--line); color:var(--text);
+    border-radius:9px; padding:10px; font-size:15px; width:100%; font-family:inherit;
+  }
+  input:focus,select:focus{outline:none; border-color:var(--accent);}
+  input[type=checkbox]{width:20px; height:20px; accent-color:var(--accent);}
+  .btn{
+    background:var(--accent); color:#fff; border:none; border-radius:10px;
+    padding:11px 14px; font-size:14.5px; font-weight:600; cursor:pointer; width:100%;
+  }
+  .btn:active{opacity:.85;}
+  .btn.sec{background:var(--card2); color:var(--text); border:1px solid var(--line);}
+  .btn.sm{width:auto; padding:7px 12px; font-size:13px;}
+  .btn.danger{background:#3a2230; color:var(--red); border:1px solid #5c2c3e;}
+  .result{margin-top:12px; background:var(--card2); border-radius:10px; padding:12px; display:none;}
+  .result.show{display:block;}
+  .result .rbig{font-size:24px; font-weight:700;}
+  .result .rsub{font-size:12.5px; color:var(--muted); margin-top:4px;}
+  .bars{margin-top:10px; display:flex; flex-direction:column; gap:6px;}
+  .bar{display:flex; align-items:center; gap:8px; font-size:12px;}
+  .bar .lab{width:52px; color:var(--muted);}
+  .bar .track{flex:1; background:#0d1220; border-radius:6px; height:10px; overflow:hidden;}
+  .bar .fill{height:100%; border-radius:6px;}
+  .bar .val{width:64px; text-align:right; color:var(--muted);}
+  .bottleneck{font-weight:700;}
+
+  /* tables */
+  .tblwrap{overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -4px;}
+  table{width:100%; border-collapse:collapse; font-size:13px; min-width:420px;}
+  th,td{padding:6px 6px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap;}
+  th{color:var(--muted); font-weight:600; font-size:11.5px; text-align:right;}
+  th:first-child,td:first-child{text-align:left;}
+  table input{padding:6px; font-size:13px; text-align:right; min-width:66px;}
+  table input.date{min-width:120px; text-align:left;}
+  td.center,th.center{text-align:center;}
+  .rowdel{background:none; border:none; color:var(--red); font-size:16px; cursor:pointer; padding:2px 6px;}
+  .toolbar{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .locked input{background:transparent; border-color:transparent; color:var(--muted); pointer-events:none;}
+  .collapsed .body{display:none;}
+  .increase{color:var(--ok);} .decrease{color:var(--red);}
+  tr.autorow input{color:var(--muted); font-style:italic;}
+  .estbadge{display:inline-block; margin-left:4px; font-size:9px; color:var(--warn); border:1px solid #5c4626; border-radius:4px; padding:0 3px; vertical-align:middle;}
+  .hint{font-size:12px; color:var(--muted); margin-top:8px;}
+  .warnbox{background:#3a2e1c; border:1px solid #5c4626; color:var(--warn); border-radius:10px; padding:9px 11px; font-size:12.5px; margin-top:10px; display:none;}
+  .warnbox.show{display:block;}
+  textarea{width:100%; min-height:90px; background:var(--card2); border:1px solid var(--line); color:var(--text); border-radius:10px; padding:10px; font-size:12px; font-family:ui-monospace,monospace; resize:vertical;}
+  .setgrid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .mlmonths{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;}
+  .mlmonths label{display:flex; align-items:center; gap:4px; font-size:12.5px; background:var(--card2); padding:5px 8px; border-radius:8px;}
+  .mlmonths input{width:16px; height:16px;}
+  details summary{cursor:pointer; color:var(--muted); font-size:13px;}
+  .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ok); color:#04140b; padding:10px 18px; border-radius:22px; font-weight:600; font-size:13.5px; opacity:0; transition:opacity .25s; pointer-events:none; z-index:99;}
+  .toast.show{opacity:1;}
+  canvas{max-width:100%;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>同步器計算機</h1>
+  <div class="sub">記錄每週等級變化 → 反推資源產量 → 推算未來到達點。資料存在本機瀏覽器。</div>
+
+  <div class="warnbox" id="backupReminder">
+    ⚠️ 你有一段時間沒備份了，資料只存在這台裝置、可能被瀏覽器清除。建議現在備份一份文字。
+    <div class="toolbar" style="margin-top:8px">
+      <button class="btn sm" onclick="exportData()">立即備份（複製文字）</button>
+      <button class="btn sm sec" onclick="dismissReminder()">稍後</button>
+    </div>
+  </div>
+
+  <!-- 摘要卡 -->
+  <div class="card" id="summaryCard">
+    <h2>目前狀態 <span class="tag" id="sumMeta"></span></h2>
+    <div class="sumhead">
+      <div class="lvlwrap"><span class="pill">實際等級</span><span class="big" id="sumActual">—</span></div>
+      <div class="lvlwrap"><span class="pill">理論等級</span><span class="big" id="sumTheo" style="font-size:22px;color:var(--muted)">—</span></div>
+      <div class="lvlwrap"><span class="pill">囤積量</span><span class="big" id="sumStock" style="font-size:22px;color:var(--accent2)">—</span></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">目前段</div><div class="v" id="sumSeg">—</div></div>
+      <div class="stat"><div class="k">近期速率</div><div class="v" id="sumSpeed">—</div></div>
+      <div class="stat"><div class="k">產量基準</div><div class="v" id="sumBasis">—</div></div>
+    </div>
+    <div class="costline">
+      <span>下一級成本：</span>
+      <span class="c-gold">金幣 <b id="cGold">—</b></span>
+      <span class="c-red">紅球 <b id="cRed">—</b></span>
+      <span class="c-combat">戰鬥 <b id="cCombat">—</b></span>
+    </div>
+    <div class="bnote" id="prodNote"></div>
+  </div>
+
+  <!-- 每小時被動產量（參考） -->
+  <div class="card">
+    <details>
+      <summary>每小時被動產量（參考・不進推算）</summary>
+      <div style="margin-top:12px">
+        <div class="setgrid">
+          <div><label class="fld">金幣 / hr</label><input type="number" id="hrGold" inputmode="numeric"></div>
+          <div><label class="fld">紅球 / hr</label><input type="number" id="hrRed" inputmode="numeric"></div>
+          <div><label class="fld">戰鬥 / hr（k）</label><input type="number" id="hrCombat" inputmode="numeric"></div>
+        </div>
+        <div class="toolbar"><button class="btn sm" onclick="saveHourly()">更新</button></div>
+        <div class="hint" id="hourlyEff"></div>
+        <div class="hint">主線後被動提升就回來更新這裡，推算會用「新時薪 × 168 × 校準倍率 k」同比例調整。k 由每週等級反推自動校準（每記一次新的一週就重算），假設你的活動/任務等收入跟時薪同比例變動。金幣填原始值、戰鬥填 k、紅球填原始值。</div>
+      </div>
+    </details>
+  </div>
+
+  <div class="grid2">
+    <!-- 計算機 -->
+    <div class="card">
+      <h2>計算機 <span class="tag">日期 ↔ 等級 雙向推算</span></h2>
+      <div class="seg">
+        <button id="modeDate" class="on" onclick="setMode('date')">目標日期 → 等級</button>
+        <button id="modeLevel" onclick="setMode('level')">目標等級 → 日期</button>
+      </div>
+      <div id="inpDate">
+        <label class="fld">目標日期</label>
+        <input type="date" id="targetDate">
+      </div>
+      <div id="inpLevel" style="display:none">
+        <label class="fld">目標等級</label>
+        <input type="number" id="targetLevel" placeholder="例如 850" inputmode="numeric">
+      </div>
+      <div style="margin-top:12px"><button class="btn" onclick="runCalc()">推算</button></div>
+      <div class="result" id="calcResult">
+        <div class="rbig" id="rMain">—</div>
+        <div class="rsub" id="rSub"></div>
+        <div class="bars" id="rBars"></div>
+      </div>
+      <div class="warnbox" id="calcWarn"></div>
+    </div>
+
+    <!-- 趨勢圖 -->
+    <div class="card">
+      <h2>趨勢圖 <span class="tag">實際 / 理論 / 推算</span></h2>
+      <canvas id="chart" height="230"></canvas>
+      <div class="hint">實線=歷史，虛線=往後推算。理論線與實際線的差距即囤積量。</div>
+    </div>
+  </div>
+
+  <!-- 記錄器 -->
+  <div class="card">
+    <h2>記錄器 <span class="tag">每週一列</span></h2>
+    <div class="tblwrap">
+      <table id="histTable">
+        <thead><tr>
+          <th>日期</th><th>理論</th><th>實際</th><th>週增幅</th><th class="center">主線</th><th></th>
+        </tr></thead>
+        <tbody id="histBody"></tbody>
+      </table>
+    </div>
+    <div class="toolbar">
+      <button class="btn sm sec" onclick="addHistRow()">＋ 新增一週</button>
+    </div>
+    <div class="hint">「理論」是把囤積資源全花光能到幾級（新資料，可留空）；「實際」是當前真正等級。</div>
+  </div>
+
+  <!-- 成本表 -->
+  <div class="card" id="costCard">
+    <h2>分段成本表 <span class="tag" id="costTag">每 50 級一段・金幣/戰鬥單位 k</span></h2>
+    <div class="body">
+      <div class="tblwrap">
+        <table id="costTable">
+          <thead><tr>
+            <th>段起</th><th>段迄</th><th>金幣/級 (k)</th><th>紅球/級</th><th>戰鬥/級 (k)</th><th></th>
+          </tr></thead>
+          <tbody id="costBody"></tbody>
+        </table>
+      </div>
+      <div class="toolbar">
+        <button class="btn sm sec" onclick="addCostRow()">＋ 新增一段</button>
+        <button class="btn sm sec" onclick="fillCostTo1000()">自動補到 1000 級</button>
+        <button class="btn sm sec" onclick="recomputeAutoBtn()">依成長率重算「估」段</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn sm" id="lockBtn" onclick="toggleLock()">🔒 鎖定</button>
+    </div>
+    <div class="hint">851 級以上是依「每段成長率」自動產生的<b>估算段（標「估」、灰字）</b>，改成遊戲實際值即轉為正式資料。成長率可在設定調整，改完按「依成長率重算」。</div>
+  </div>
+
+  <!-- 設定 -->
+  <div class="card">
+    <details>
+      <summary>設定</summary>
+      <div style="margin-top:12px">
+        <div class="setgrid">
+          <div>
+            <label class="fld">產量反推平均週數</label>
+            <input type="number" id="setWindow" min="2" max="20">
+          </div>
+          <div>
+            <label class="fld">主線加成自動估（依歷史）</label>
+            <select id="setMlAuto"><option value="1">開啟（推薦）</option><option value="0">關閉（用下方手填 %）</option></select>
+          </div>
+          <div>
+            <label class="fld">主線加成 %（自動估關閉時使用）</label>
+            <input type="number" id="setBoost" step="0.5">
+          </div>
+          <div>
+            <label class="fld">推算延伸週數（圖）</label>
+            <input type="number" id="setProjWeeks" min="4" max="200">
+          </div>
+          <div>
+            <label class="fld">成本・金幣每段成長 %</label>
+            <input type="number" id="setCostGold" step="0.5">
+          </div>
+          <div>
+            <label class="fld">成本・戰鬥每段成長 %</label>
+            <input type="number" id="setCostCombat" step="0.5">
+          </div>
+          <div>
+            <label class="fld">成本・紅球每段 +</label>
+            <input type="number" id="setCostRed">
+          </div>
+        </div>
+        <label class="fld" style="margin-top:12px">主線開啟月份（每次開啟＝產量永久提升，複利累加）</label>
+        <div class="mlmonths" id="mlMonths"></div>
+        <div class="toolbar"><button class="btn sm" onclick="saveSettings()">套用設定</button></div>
+      </div>
+    </details>
+  </div>
+
+  <!-- 備份 -->
+  <div class="card">
+    <details>
+      <summary>備份 / 搬移（跨裝置）</summary>
+      <div style="margin-top:12px">
+        <div class="toolbar">
+          <button class="btn sm" onclick="exportData()">📋 匯出（複製文字）</button>
+          <button class="btn sm sec" onclick="importData()">匯入（貼上下方文字）</button>
+          <button class="btn sm danger" onclick="resetData()">重設全部</button>
+        </div>
+        <textarea id="ioBox" placeholder="匯出的備份文字會出現在這裡並自動複製到剪貼簿。要還原就把備份文字貼進來，按「匯入」。" style="margin-top:10px"></textarea>
+        <div class="hint">iOS：不產生檔案，純文字複製貼上。電腦匯出 → LINE 傳到手機 → 手機貼上匯入。</div>
+      </div>
+    </details>
+    <div class="hint" id="backupStatus" style="margin-top:8px"></div>
+  </div>
+
+  <div class="sub" style="text-align:center; margin-top:4px">同步器計算機 · 純前端 · 資料僅存於本機</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+/* ================= 狀態與預設資料 ================= */
+const LS_KEY = 'syncCalc_v1';
+
+// 預載：一年實測「實際等級」（每週一）。理論等級留空，往後開始記。
+const SEED_ACTUAL = [
+  ['2025-09-01',425],['2025-09-08',432],['2025-09-15',439],['2025-09-22',447],['2025-09-29',455],
+  ['2025-10-06',462],['2025-10-13',469],['2025-10-20',476],['2025-10-27',482],
+  ['2025-11-03',491],['2025-11-10',498],['2025-11-17',504],['2025-11-24',516],
+  ['2025-12-01',523],['2025-12-08',531],['2025-12-15',538],['2025-12-22',546],['2025-12-29',551],
+  ['2026-01-05',561],['2026-01-12',567],['2026-01-19',575],['2026-01-26',582],
+  ['2026-02-02',588],['2026-02-09',596],['2026-02-16',603],['2026-02-23',611],
+  ['2026-03-02',621],['2026-03-09',627],['2026-03-16',634],['2026-03-23',641],['2026-03-30',647],
+  ['2026-04-06',654],['2026-04-13',660],['2026-04-20',666],['2026-04-27',677],
+  ['2026-05-04',686],['2026-05-11',694],['2026-05-18',701],['2026-05-25',707],
+  ['2026-06-01',713],['2026-06-08',719],['2026-06-15',726],['2026-06-22',732],['2026-06-28',738],
+  ['2026-07-06',744],['2026-07-13',750],['2026-07-20',756],['2026-07-27',762],
+  ['2026-08-03',769]
+];
+// 成本表（金幣/戰鬥為 k 值，紅球為原始值）。851 級以上依成長率自動產生(_auto)，可直接改成實際值。
+const SEED_COST = [
+  {from:651,to:700, gold:9380,  red:17000, combat:85574},
+  {from:701,to:750, gold:10422, red:18000, combat:95082},
+  {from:751,to:800, gold:11464, red:19000, combat:105090},
+  {from:801,to:850, gold:12510, red:20000, combat:116049},
+];
+// 成本每段成長：金幣/戰鬥 +10%、紅球 +1000（皆可調）
+const DEFAULT_SETTINGS = { windowWeeks:4, boostPct:3, redBonus:504, projWeeks:52, mainlineMonths:[2,4,8,11], costGold:10, costCombat:10, costRed:1000, mainlineAuto:true };
+const COST_MAX_LEVEL = 1000; // 自動產生分段到此等級
+const BACKUP_REMIND_DAYS = 7; // 有未備份改動且距上次備份超過此天數 → 提醒
+// 每小時被動產量（僅作參考/交叉檢查，不進推算）。金幣為原始值、戰鬥為 k、紅球為原始值
+const SEED_HOURLY = { gold:70919, red:115, combat:726 };
+
+function seedState(){
+  const mlM = DEFAULT_SETTINGS.mainlineMonths;
+  const history = SEED_ACTUAL.map(([date,actual])=>({
+    date, theo:null, actual,
+    mainline: mlM.includes(new Date(date+'T00:00').getMonth()+1)
+  }));
+  return { history, costTable: JSON.parse(JSON.stringify(SEED_COST)), costLocked:false, settings:{...DEFAULT_SETTINGS}, hourly:{...SEED_HOURLY}, lastBackup:Date.now(), lastModified:Date.now() };
+}
+
+let state = load() || seedState();
+
+// 遷移：補齊新設定欄位，並自動把成本表分段補到 COST_MAX_LEVEL
+(function migrate(){
+  state.settings = Object.assign({}, DEFAULT_SETTINGS, state.settings || {});
+  if(!state.hourly) state.hourly = {...SEED_HOURLY};
+  // 校準基準時薪：記錄「最近一次週資料當下的時薪」，用來配對反推產量算出有效倍率 k
+  if(!state.calibHourly) state.calibHourly = {...state.hourly};
+  if(state.lastBackup==null) state.lastBackup = Date.now();
+  if(state.lastModified==null) state.lastModified = Date.now();
+  extendCostTo(COST_MAX_LEVEL);
+})();
+let storagePersisted=null;      // 瀏覽器是否已授予持久儲存（顯示用）
+let reminderDismissed=false;    // 本次工作階段是否已關閉備份提醒
+// 每次週資料變動時，把當下時薪快照為校準基準（k 隨新資料重新校準）
+function snapshotCalib(){ state.calibHourly = {...(state.hourly||{})}; }
+
+function load(){ try{ const s=localStorage.getItem(LS_KEY); return s?JSON.parse(s):null; }catch(e){ return null; } }
+function save(){ state.lastModified=Date.now(); persist(); if(typeof renderBackupStatus==='function') renderBackupStatus(); }
+function persist(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){ toast('儲存失敗（隱私模式？）'); } }
+
+// 依成長率，從現有最高段往上自動補分段到 maxLevel（不覆蓋既有列，新列標記 _auto）
+function extendCostTo(maxLevel){
+  const t=state.costTable.slice().sort((a,b)=>a.from-b.from);
+  if(!t.length) { return; }
+  const S=state.settings||DEFAULT_SETTINGS;
+  let last=t[t.length-1];
+  let guard=0;
+  while(last.to < maxLevel && guard++<200){
+    const from=last.to+1, to=from+49;
+    const row={ from, to,
+      gold:Math.round(last.gold*(1+(S.costGold||10)/100)),
+      red: last.red + (S.costRed!=null?S.costRed:1000),
+      combat:Math.round(last.combat*(1+(S.costCombat||10)/100)),
+      _auto:true };
+    t.push(row); last=row;
+  }
+  state.costTable=t;
+}
+// 移除自動段後，依目前成長率重新產生（保留使用者手改成的實際值 = 已無 _auto 標記者）
+function recomputeAuto(){
+  state.costTable=state.costTable.filter(r=>!r._auto);
+  extendCostTo(COST_MAX_LEVEL);
+}
+
+/* ================= 工具 ================= */
+function fmtK(n){ if(n==null||isNaN(n)) return '—'; return Math.round(n).toLocaleString()+'k'; }
+function fmtNum(n){ if(n==null||isNaN(n)) return '—'; return Math.round(n).toLocaleString(); }
+function fmtLvl(n){ if(n==null||isNaN(n)) return '—'; return (Math.round(n*10)/10).toString(); }
+function parseDate(s){ return new Date(s+'T00:00:00'); }
+function dayDiff(a,b){ return (parseDate(b)-parseDate(a))/86400000; }
+function fmtDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function todayStr(){ return fmtDate(new Date()); }
+// 以本地時間格式化，避免 toISOString 轉 UTC 造成跨時區掉一天
+function addDays(dateStr, days){ const d=parseDate(dateStr); d.setDate(d.getDate()+Math.round(days)); return fmtDate(d); }
+function sortedHistory(){ return [...state.history].filter(h=>h.date).sort((a,b)=>parseDate(a.date)-parseDate(b.date)); }
+function segmentOf(level){
+  const t=state.costTable;
+  for(const r of t){ if(level>=r.from && level<=r.to) return r; }
+  if(t.length){ // 超出範圍：沿用最後一段並標記
+    const last=t[t.length-1];
+    if(level>last.to) return {...last, _over:true};
+    const first=t[0];
+    if(level<first.from) return {...first, _under:true};
+  }
+  return null;
+}
+// 由 fromL 升到 toL(可含小數) 需消耗的資源（跨段自動分攤）
+function costSum(fromL, toL){
+  let g=0,r=0,c=0, x=fromL;
+  let guard=0;
+  while(x < toL-1e-9 && guard++<100000){
+    const lvl=Math.floor(x)+1;
+    const nextBoundary=Math.floor(x)+1;
+    const step=Math.min(nextBoundary, toL)-x;
+    const seg=segmentOf(lvl);
+    if(seg){ g+=seg.gold*step; r+=seg.red*step; c+=seg.combat*step; }
+    x=Math.min(nextBoundary, toL);
+  }
+  return {gold:g, red:r, combat:c};
+}
+
+/* ================= 產量反推 =================
+   產量基準 = 「平常週(非主線)」的每週產出；主線加成從歷史自動估：
+   M = 主線週平均升級速度 / 平常週平均升級速度。推算時，落在主線月份的那週產量 ×M。 */
+function deriveProduction(){
+  const h=sortedHistory();
+  const S=state.settings;
+  const w=S.windowWeeks;
+  const theoPts=h.filter(x=>x.theo!=null && x.theo!==''&&!isNaN(+x.theo));
+  const useTheo = theoPts.length >= (w+1); // 理論資料足夠才切理論反推，否則用實際等級打底
+  const metric = useTheo ? 'theo' : 'actual';
+  const src = useTheo?theoPts:h;
+  const series = src.map(x=>({date:x.date, level:+(useTheo?x.theo:x.actual), mainline:!!x.mainline}))
+                  .filter(x=>!isNaN(x.level));
+  if(series.length<2) return null;
+  // 逐區間（每週）計算資源產出與升級速度，並標記該週是否主線
+  const iv=[];
+  for(let i=1;i<series.length;i++){
+    const p0=series[i-1], p1=series[i];
+    const days=dayDiff(p0.date,p1.date); if(days<=0) continue;
+    const weeks=days/7;
+    const cs = p1.level>p0.level ? costSum(p0.level,p1.level) : {gold:0,red:0,combat:0};
+    const dl = Math.max(0, p1.level-p0.level);
+    iv.push({gold:cs.gold/weeks, red:cs.red/weeks, combat:cs.combat/weeks, lvlPerWk:dl/weeks, weeks, mainline:p1.mainline});
+  }
+  if(!iv.length) return null;
+  const avg = arr => { let g=0,r=0,c=0,l=0,wk=0; arr.forEach(x=>{g+=x.gold*x.weeks;r+=x.red*x.weeks;c+=x.combat*x.weeks;l+=x.lvlPerWk*x.weeks;wk+=x.weeks;}); return wk>0?{gold:g/wk,red:r/wk,combat:c/wk,lvlPerWk:l/wk}:null; };
+  // 平常週產量基準：最近 w 個「非主線」區間（不足則退回最近 w 個全部區間）
+  let normalIv = iv.filter(x=>!x.mainline);
+  if(normalIv.length<1) normalIv = iv.slice();
+  const normal = avg(normalIv.slice(-w));
+  // 主線加成 M：全歷史 主線週 vs 平常週
+  const mlIv=iv.filter(x=>x.mainline), nlIv=iv.filter(x=>!x.mainline);
+  let M, mlAuto=false;
+  if(S.mainlineAuto!==false && mlIv.length>=1 && nlIv.length>=1){
+    const ml=avg(mlIv), nl=avg(nlIv);
+    M = (nl.lvlPerWk>0)? (ml.lvlPerWk/nl.lvlPerWk) : 1;
+    if(!isFinite(M)||M<=0) M=1;
+    mlAuto=true;
+  } else {
+    M = 1 + (S.boostPct||0)/100; // 手動或資料不足時的後備
+  }
+  return {
+    gold:normal.gold, red:normal.red, combat:normal.combat,
+    metric, levelsPerWeek:normal.lvlPerWk,
+    mainlineMult:M, mainlineAuto:mlAuto,
+    mlLvlPerWk: mlIv.length?avg(mlIv).lvlPerWk:null,
+    intervals:Math.min(w,normalIv.length), mlIntervals:mlIv.length, nlIntervals:nlIv.length
+  };
+}
+
+/* ================= 有效產量（時薪校準） =================
+   base = 反推平常週產量 × (目前時薪 / 校準基準時薪)。
+   時薪不變時 factor=1（= 純反推）；更新時薪後整體同比例縮放。 */
+function effectiveProduction(){
+  const prod=deriveProduction(); if(!prod) return null;
+  const cal=state.calibHourly||{}, hr=state.hourly||{};
+  const f=k=> (cal[k]>0 && hr[k]>0) ? hr[k]/cal[k] : 1;
+  const factor={gold:f('gold'), red:f('red'), combat:f('combat')};
+  return Object.assign({}, prod, {
+    gold:prod.gold*factor.gold, red:prod.red*factor.red, combat:prod.combat*factor.combat,
+    factor, raw:prod
+  });
+}
+// 校準倍率 k（每週總產量 ÷ 被動時薪×168），每資源一個，供顯示
+function calibMultipliers(){
+  const prod=deriveProduction(); if(!prod) return null;
+  const cal=state.calibHourly||{};
+  const kk=(weekly,hrRaw,isGold)=>{ if(!hrRaw) return null; const passive=(isGold? hrRaw/1000 : hrRaw)*168; return passive>0? weekly/passive : null; };
+  return { gold:kk(prod.raw?prod.raw.gold:prod.gold, cal.gold, true),
+           red:kk(prod.red, cal.red, false),
+           combat:kk(prod.combat, cal.combat, false) };
+}
+
+/* ================= 推算引擎 ================= */
+// stop: {type:'date', value:'YYYY-MM-DD'} 或 {type:'level', value:number}
+function project(stop){
+  const prod=effectiveProduction();
+  const h=sortedHistory();
+  if(!prod || !h.length) return {error:'資料不足，至少需要兩週紀錄與成本表。'};
+  const last=h[h.length-1];
+  const startLevel = (last.theo!=null && last.theo!=='' && !isNaN(+last.theo)) ? +last.theo : +last.actual;
+  let cur=startLevel, date=last.date;
+  // 平常週基準產量（固定），主線月份的那週 ×M
+  const baseG=prod.gold, baseR=prod.red, baseC=prod.combat, M=prod.mainlineMult;
+  const S=state.settings;
+  const path=[{date, level:cur, bottleneck:null}];
+  let overFlag=false, guard=0;
+  const maxIter = (S.projWeeks||52)*4 + 2000;
+  while(guard++ < maxIter){
+    // 停止條件
+    if(stop.type==='level' && cur>=stop.value) break;
+    if(stop.type==='date' && parseDate(date) >= parseDate(stop.value)) break;
+
+    // 前進一週：落在主線月份 → 該週產量 ×M（每次主線都套用，反映週期性衝量）
+    const nd=addDays(date,7);
+    const isML = S.mainlineMonths.includes(parseDate(nd).getMonth()+1);
+    const mult = isML ? M : 1;
+    const g=baseG*mult, r=baseR*mult, c=baseC*mult;
+    const seg=segmentOf(Math.floor(cur));
+    if(!seg) return {error:'成本表沒有涵蓋等級 '+Math.floor(cur)+'，請到成本表補列。'};
+    if(seg._over) overFlag=true;
+    const sg=g/seg.gold, sr=r/seg.red, sc=c/seg.combat;
+    let speed=Math.min(sg,sr,sc);
+    let bn = speed===sg?'gold':(speed===sr?'red':'combat');
+
+    if(stop.type==='level'){
+      const remain=stop.value-cur;
+      if(speed>=remain){ // 這一週就會到 → 內插日期
+        const frac=remain/speed;
+        date=addDays(date, 7*frac); cur=stop.value;
+        path.push({date, level:cur, bottleneck:bn});
+        break;
+      }
+    }
+    cur+=speed; date=nd;
+    path.push({date, level:cur, bottleneck:bn, sg,sr,sc, seg});
+
+    if(stop.type==='date' && parseDate(date) >= parseDate(stop.value)){
+      // 若超過目標日，回退最後一步做內插
+      const prev=path[path.length-2];
+      const totalDays=dayDiff(prev.date, date);
+      const wantDays=dayDiff(prev.date, stop.value);
+      if(totalDays>0){
+        const frac=wantDays/totalDays;
+        cur=prev.level+(cur-prev.level)*frac; date=stop.value;
+        path[path.length-1]={date, level:cur, bottleneck:bn};
+      }
+      break;
+    }
+  }
+  // 最後一段瓶頸資訊
+  let lastStep=null;
+  for(let i=path.length-1;i>=1;i--){ if(path[i].sg!=null){ lastStep=path[i]; break; } }
+  return { prod, startLevel, finalLevel:cur, finalDate:date, path, overFlag, lastStep };
+}
+
+/* ================= 摘要 ================= */
+function renderSummary(){
+  const h=sortedHistory();
+  const prod=effectiveProduction();
+  if(!h.length){ return; }
+  const last=h[h.length-1];
+  const actual=+last.actual;
+  const theo=(last.theo!=null && last.theo!=='' && !isNaN(+last.theo))?+last.theo:null;
+  document.getElementById('sumActual').textContent=fmtLvl(actual);
+  document.getElementById('sumTheo').textContent= theo!=null?fmtLvl(theo):'—';
+  document.getElementById('sumStock').textContent= theo!=null? '+'+fmtLvl(theo-actual):'—';
+  const baseLvl = theo!=null?theo:actual;
+  const seg=segmentOf(Math.floor(baseLvl));
+  document.getElementById('sumSeg').textContent= seg? (seg.from+'–'+seg.to+(seg._over?' (超表)':'')) : '未涵蓋';
+  document.getElementById('sumMeta').textContent= '更新於 '+last.date;
+
+  if(seg){
+    document.getElementById('cGold').textContent=fmtK(seg.gold);
+    document.getElementById('cRed').textContent=fmtNum(seg.red);
+    document.getElementById('cCombat').textContent=fmtK(seg.combat);
+  }
+  if(prod && seg){
+    const sg=prod.gold/seg.gold, sr=prod.red/seg.red, sc=prod.combat/seg.combat;
+    const speed=Math.min(sg,sr,sc);           // 平常週速率
+    const mlSpeed=speed*prod.mainlineMult;    // 主線週速率
+    const bn = speed===sg?'金幣':(speed===sr?'紅球':'戰鬥');
+    document.getElementById('sumSpeed').textContent= (Math.round(speed*100)/100)+' 級/週';
+    document.getElementById('sumBasis').textContent= (prod.metric==='theo'?'理論反推':'實際增幅')+'・平常週'+prod.intervals+'週';
+    const mlPct=Math.round((prod.mainlineMult-1)*100);
+    const mlTxt = prod.mainlineAuto
+      ? '主線加成 <span class="hl">+'+mlPct+'%</span>（歷史自動估：主線 '+ (prod.mlLvlPerWk?(Math.round(prod.mlLvlPerWk*100)/100):'—') +' vs 平常 '+(Math.round(prod.levelsPerWeek*100)/100)+' 級/週，主線週約 '+(Math.round(mlSpeed*100)/100)+' 級/週）'
+      : '主線加成 +'+mlPct+'%（手動/資料不足後備）';
+    // 每小時被動交叉檢查
+    let hourlyTxt='';
+    const hr=state.hourly||{};
+    if(hr.gold||hr.red||hr.combat){
+      // 金幣時薪為原始值(成本表為k)→÷1000；戰鬥時薪已是k；紅球皆原始值
+      const passLvlG=(hr.gold/1000*168)/seg.gold, passLvlR=(hr.red*168)/seg.red, passLvlC=(hr.combat*168)/seg.combat;
+      const passLvl=Math.min(passLvlG,passLvlR,passLvlC);
+      const ratio = passLvl>0 ? (speed/passLvl) : null;
+      const fct=prod.factor||{gold:1,red:1,combat:1};
+      const scaled = (Math.abs(fct.gold-1)+Math.abs(fct.red-1)+Math.abs(fct.combat-1))>0.001;
+      hourlyTxt = '<br>每小時被動：<span class="c-gold">金幣 '+fmtNum(hr.gold)+'</span>、<span class="c-red">紅球 '+fmtNum(hr.red)+'</span>、<span class="c-combat">戰鬥 '+fmtK(hr.combat)+'</span>＝約 '+(Math.round(passLvl*100)/100)+' 級/週被動'
+        + (ratio? '，總收入約是被動的 <span class="hl">'+(Math.round(ratio*10)/10)+'×</span>（其餘來自活動/任務/儲值）。':'。')
+        + (scaled? ' <span class="hl">時薪已相對校準基準縮放推算（金'+(Math.round(fct.gold*100)/100)+'× 紅'+(Math.round(fct.red*100)/100)+'× 戰'+(Math.round(fct.combat*100)/100)+'×）</span>':'');
+    }
+    document.getElementById('prodNote').innerHTML=
+      '平常週產量估計：<span class="c-gold">金幣 '+fmtK(prod.gold)+'</span>、<span class="c-red">紅球 '+fmtNum(prod.red)+'</span>、<span class="c-combat">戰鬥 '+fmtK(prod.combat)+'</span>。'
+      +'目前瓶頸：<span class="hl">'+bn+'</span>（'+(prod.metric==='theo'?'理論反推':'實際等級打底，累積理論資料後自動升級')+'）。<br>'+mlTxt+'。'+hourlyTxt;
+  } else {
+    document.getElementById('sumSpeed').textContent='—';
+    document.getElementById('sumBasis').textContent='—';
+    document.getElementById('prodNote').textContent='資料不足，無法估產量。';
+  }
+}
+
+/* ================= 記錄器 ================= */
+function renderHistory(){
+  const body=document.getElementById('histBody');
+  body.innerHTML='';
+  const h=sortedHistory();
+  h.forEach((row)=>{
+    const idx=state.history.indexOf(row);
+    const prev=h[h.indexOf(row)-1];
+    let delta='—';
+    if(prev){
+      const cur=(row.theo!=null&&row.theo!==''&&!isNaN(+row.theo))?+row.theo:+row.actual;
+      const pv=(prev.theo!=null&&prev.theo!==''&&!isNaN(+prev.theo))?+prev.theo:+prev.actual;
+      const d=cur-pv; delta=(d>=0?'+':'')+fmtLvl(d);
+    }
+    const tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td><input class="date" type="date" value="'+row.date+'" onchange="editHist('+idx+',\'date\',this.value)"></td>'+
+      '<td><input type="number" value="'+(row.theo??'')+'" placeholder="—" inputmode="numeric" onchange="editHist('+idx+',\'theo\',this.value)"></td>'+
+      '<td><input type="number" value="'+(row.actual??'')+'" inputmode="numeric" onchange="editHist('+idx+',\'actual\',this.value)"></td>'+
+      '<td class="'+(delta.startsWith('+')?'increase':(delta.startsWith('-')?'decrease':''))+'">'+delta+'</td>'+
+      '<td class="center"><input type="checkbox" '+(row.mainline?'checked':'')+' onchange="editHist('+idx+',\'mainline\',this.checked)"></td>'+
+      '<td class="center"><button class="rowdel" onclick="delHist('+idx+')">✕</button></td>';
+    body.appendChild(tr);
+  });
+}
+function editHist(i,f,v){
+  if(f==='theo'||f==='actual') state.history[i][f]= v===''?null:+v;
+  else state.history[i][f]=v;
+  snapshotCalib(); save(); renderAll(); // 週資料變動 → 重新校準 k
+}
+function delHist(i){ state.history.splice(i,1); snapshotCalib(); save(); renderAll(); }
+function addHistRow(){
+  const h=sortedHistory();
+  let d=new Date();
+  if(h.length){ d=addDays(h[h.length-1].date,7); } else { d=todayStr(); }
+  const mlM=state.settings.mainlineMonths;
+  state.history.push({date: (typeof d==='string'?d:d), theo:null, actual:null, mainline: mlM.includes(parseDate(typeof d==='string'?d:d).getMonth()+1)});
+  snapshotCalib(); save(); renderAll();
+}
+
+/* ================= 成本表 ================= */
+function renderCost(){
+  const body=document.getElementById('costBody');
+  body.innerHTML='';
+  state.costTable.forEach((row,i)=>{
+    const tr=document.createElement('tr');
+    if(row._auto){ tr.className='autorow'; tr.title='自動估算段（依成長率產生），可直接改成遊戲實際值'; }
+    tr.innerHTML=
+      '<td><input type="number" value="'+row.from+'" inputmode="numeric" onchange="editCost('+i+',\'from\',this.value)">'+(row._auto?'<span class="estbadge">估</span>':'')+'</td>'+
+      '<td><input type="number" value="'+row.to+'" inputmode="numeric" onchange="editCost('+i+',\'to\',this.value)"></td>'+
+      '<td><input type="number" value="'+row.gold+'" inputmode="numeric" onchange="editCost('+i+',\'gold\',this.value)"></td>'+
+      '<td><input type="number" value="'+row.red+'" inputmode="numeric" onchange="editCost('+i+',\'red\',this.value)"></td>'+
+      '<td><input type="number" value="'+row.combat+'" inputmode="numeric" onchange="editCost('+i+',\'combat\',this.value)"></td>'+
+      '<td class="center"><button class="rowdel" onclick="delCost('+i+')">✕</button></td>';
+    body.appendChild(tr);
+  });
+  const card=document.getElementById('costCard');
+  const btn=document.getElementById('lockBtn');
+  if(state.costLocked){ card.classList.add('locked','collapsed'); btn.textContent='🔓 解鎖編輯'; document.getElementById('costTag').textContent='已鎖定（唯讀）'; }
+  else{ card.classList.remove('locked','collapsed'); btn.textContent='🔒 鎖定'; document.getElementById('costTag').textContent='每 50 級一段・金幣/戰鬥單位 k'; }
+}
+function editCost(i,f,v){ state.costTable[i][f]=+v; delete state.costTable[i]._auto; save(); renderAll(); }
+function delCost(i){ state.costTable.splice(i,1); save(); renderAll(); }
+function addCostRow(){
+  const S=state.settings; const t=state.costTable.slice().sort((a,b)=>a.from-b.from); const last=t[t.length-1];
+  const from=last?last.to+1:1, to=from+49;
+  state.costTable.push({from,to,
+    gold:last?Math.round(last.gold*(1+(S.costGold||10)/100)):0,
+    red:last?last.red+(S.costRed||1000):0,
+    combat:last?Math.round(last.combat*(1+(S.costCombat||10)/100)):0});
+  save(); renderAll();
+}
+function fillCostTo1000(){ extendCostTo(COST_MAX_LEVEL); save(); renderAll(); toast('已補足分段到 '+COST_MAX_LEVEL+' 級'); }
+function recomputeAutoBtn(){ recomputeAuto(); save(); renderAll(); toast('已依成長率重算自動段'); }
+function toggleLock(){ state.costLocked=!state.costLocked; save(); renderCost(); }
+
+/* ================= 每小時被動（參考） ================= */
+function renderHourly(){
+  const hr=state.hourly||{};
+  document.getElementById('hrGold').value= hr.gold!=null?hr.gold:'';
+  document.getElementById('hrRed').value= hr.red!=null?hr.red:'';
+  document.getElementById('hrCombat').value= hr.combat!=null?hr.combat:'';
+  const eff=document.getElementById('hourlyEff');
+  if(eff){
+    const k=calibMultipliers();
+    if(k){
+      const f=x=> x!=null?(Math.round(x*10)/10)+'×':'—';
+      eff.innerHTML='校準倍率 k（每週總產量 ÷ 被動×168）：<b>金 '+f(k.gold)+'　紅 '+f(k.red)+'　戰 '+f(k.combat)+'</b>。更新時薪後，推算 = 新時薪 × 168 × k，整體同比例調整。';
+    } else eff.textContent='';
+  }
+}
+function saveHourly(){
+  state.hourly={
+    gold:+document.getElementById('hrGold').value||0,
+    red:+document.getElementById('hrRed').value||0,
+    combat:+document.getElementById('hrCombat').value||0
+  };
+  // 只更新時薪 → 不重新快照校準基準，讓推算按 k 同比例縮放
+  save(); renderAll(); toast('時薪已更新，推算已按 k 同比例調整');
+}
+
+/* ================= 設定 ================= */
+function renderSettings(){
+  const S=state.settings;
+  document.getElementById('setWindow').value=S.windowWeeks;
+  document.getElementById('setBoost').value=S.boostPct;
+  document.getElementById('setMlAuto').value=S.mainlineAuto?'1':'0';
+  document.getElementById('setProjWeeks').value=S.projWeeks;
+  document.getElementById('setCostGold').value=S.costGold;
+  document.getElementById('setCostCombat').value=S.costCombat;
+  document.getElementById('setCostRed').value=S.costRed;
+  const box=document.getElementById('mlMonths'); box.innerHTML='';
+  const names=['','1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  for(let m=1;m<=12;m++){
+    const l=document.createElement('label');
+    l.innerHTML='<input type="checkbox" '+(S.mainlineMonths.includes(m)?'checked':'')+' data-m="'+m+'">'+names[m];
+    box.appendChild(l);
+  }
+}
+function saveSettings(){
+  const S=state.settings;
+  S.windowWeeks=Math.max(2,+document.getElementById('setWindow').value||4);
+  S.boostPct=+document.getElementById('setBoost').value||0;
+  S.mainlineAuto=document.getElementById('setMlAuto').value==='1';
+  S.projWeeks=Math.max(4,+document.getElementById('setProjWeeks').value||52);
+  S.costGold=+document.getElementById('setCostGold').value||0;
+  S.costCombat=+document.getElementById('setCostCombat').value||0;
+  S.costRed=+document.getElementById('setCostRed').value||0;
+  S.mainlineMonths=[...document.querySelectorAll('#mlMonths input:checked')].map(x=>+x.dataset.m);
+  recomputeAuto(); // 成長率改了 → 重算自動段
+  save(); renderAll(); toast('設定已套用，成本估算段已重算');
+}
+
+/* ================= 計算機 UI ================= */
+let calcMode='date';
+function setMode(m){
+  calcMode=m;
+  document.getElementById('modeDate').classList.toggle('on',m==='date');
+  document.getElementById('modeLevel').classList.toggle('on',m==='level');
+  document.getElementById('inpDate').style.display= m==='date'?'block':'none';
+  document.getElementById('inpLevel').style.display= m==='level'?'block':'none';
+  document.getElementById('calcResult').classList.remove('show');
+  document.getElementById('calcWarn').classList.remove('show');
+}
+function runCalc(){
+  const warn=document.getElementById('calcWarn'); warn.classList.remove('show');
+  let stop;
+  if(calcMode==='date'){
+    const v=document.getElementById('targetDate').value;
+    if(!v){ toast('請選目標日期'); return; }
+    stop={type:'date', value:v};
+  }else{
+    const v=+document.getElementById('targetLevel').value;
+    if(!v){ toast('請輸入目標等級'); return; }
+    stop={type:'level', value:v};
+  }
+  const res=project(stop);
+  const box=document.getElementById('calcResult');
+  if(res.error){ box.classList.remove('show'); warn.textContent=res.error; warn.classList.add('show'); return; }
+
+  if(calcMode==='date'){
+    document.getElementById('rMain').textContent='預估等級 '+fmtLvl(res.finalLevel);
+    document.getElementById('rSub').textContent='到 '+stop.value+'（從 '+res.path[0].date+' 等級 '+fmtLvl(res.startLevel)+' 起算）';
+  }else{
+    document.getElementById('rMain').textContent='預估到達 '+res.finalDate;
+    const days=Math.round(dayDiff(res.path[0].date, res.finalDate));
+    document.getElementById('rSub').textContent='約 '+days+' 天 / '+(Math.round(days/7*10)/10)+' 週後到 '+stop.value+' 級';
+  }
+  // 三資源限速條
+  const ls=res.lastStep;
+  const barsEl=document.getElementById('rBars'); barsEl.innerHTML='';
+  if(ls && ls.sg!=null){
+    const arr=[['金幣',ls.sg,'var(--gold)'],['紅球',ls.sr,'var(--red)'],['戰鬥',ls.sc,'var(--combat)']];
+    const mx=Math.max(ls.sg,ls.sr,ls.sc);
+    const mn=Math.min(ls.sg,ls.sr,ls.sc);
+    arr.forEach(([lab,val,col])=>{
+      const pct=mx>0?(val/mx*100):0;
+      const isBn=Math.abs(val-mn)<1e-9;
+      barsEl.innerHTML+='<div class="bar"><span class="lab '+(isBn?'bottleneck':'')+'">'+lab+(isBn?' ◀':'')+'</span>'
+        +'<span class="track"><span class="fill" style="width:'+pct+'%;background:'+col+'"></span></span>'
+        +'<span class="val">'+(Math.round(val*100)/100)+'/週</span></div>';
+    });
+    barsEl.innerHTML+='<div class="hint">◀ 為當前瓶頸（每週可升級數最小者）。</div>';
+  }
+  box.classList.add('show');
+  if(res.overFlag){ warn.textContent='注意：推算已超出成本表最後一段，沿用最後一段成本估算，建議到成本表補列後段以提高準確度。'; warn.classList.add('show'); }
+  drawChart(res); // 用這次推算路徑更新圖
+}
+
+/* ================= 圖表 ================= */
+let chart=null;
+function drawChart(projRes){
+  const h=sortedHistory();
+  if(!h.length) return;
+  // 預設推算（若沒帶入計算結果）
+  if(!projRes){
+    const wk=state.settings.projWeeks;
+    projRes=project({type:'date', value:addDays(h[h.length-1].date, wk*7)});
+    if(projRes.error) projRes=null;
+  }
+  const labels=[]; const actualD=[]; const theoD=[]; const projD=[];
+  h.forEach(r=>{
+    labels.push(r.date);
+    actualD.push(r.actual!=null?+r.actual:null);
+    theoD.push((r.theo!=null&&r.theo!=='')?+r.theo:null);
+    projD.push(null);
+  });
+  if(projRes && projRes.path){
+    // 從歷史最後一點接續
+    projD[projD.length-1]= projRes.path[0].level;
+    projRes.path.slice(1).forEach(p=>{
+      labels.push(p.date.length>10?p.date.slice(0,10):p.date);
+      actualD.push(null); theoD.push(null); projD.push(p.level);
+    });
+  }
+  const ds=[
+    {label:'實際', data:actualD, borderColor:'#5b8cff', backgroundColor:'#5b8cff', tension:.25, spanGaps:true, pointRadius:1.5, borderWidth:2},
+    {label:'理論', data:theoD, borderColor:'#3ad1c5', backgroundColor:'#3ad1c5', tension:.25, spanGaps:true, pointRadius:1.5, borderWidth:2},
+    {label:'推算', data:projD, borderColor:'#ffab5b', backgroundColor:'#ffab5b', borderDash:[6,4], tension:.25, spanGaps:true, pointRadius:0, borderWidth:2},
+  ];
+  const cfg={ type:'line', data:{labels, datasets:ds},
+    options:{ responsive:true, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{labels:{color:'#8b97b5', boxWidth:12, font:{size:11}}},
+        tooltip:{callbacks:{label:(c)=> c.dataset.label+': '+(c.parsed.y==null?'—':Math.round(c.parsed.y*10)/10)}}},
+      scales:{ x:{ ticks:{color:'#8b97b5', maxTicksLimit:8, font:{size:10}}, grid:{color:'#222c42'}},
+               y:{ ticks:{color:'#8b97b5', font:{size:10}}, grid:{color:'#222c42'}}}
+    }};
+  if(chart) chart.destroy();
+  chart=new Chart(document.getElementById('chart'), cfg);
+}
+
+/* ================= 備份 / 匯入匯出 ================= */
+function exportData(){
+  state.lastBackup=Date.now();          // 標記已備份（不動 lastModified）
+  const txt='SYNC1|'+btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+  document.getElementById('ioBox').value=txt;
+  persist(); reminderDismissed=false; renderBackupStatus();
+  navigator.clipboard?.writeText(txt).then(()=>toast('已備份並複製到剪貼簿'),()=>toast('已產生備份文字，請手動複製'));
+}
+function importData(){
+  const txt=document.getElementById('ioBox').value.trim();
+  if(!txt){ toast('請先貼上備份文字'); return; }
+  try{
+    let json;
+    if(txt.startsWith('SYNC1|')) json=decodeURIComponent(escape(atob(txt.slice(6))));
+    else json=txt; // 容許直接貼 JSON
+    const obj=JSON.parse(json);
+    if(!obj.history||!obj.costTable) throw new Error('格式不符');
+    state=obj;
+    if(!state.settings) state.settings={...DEFAULT_SETTINGS};
+    state.lastBackup=Date.now(); state.lastModified=Date.now(); // 剛從備份還原＝已安全
+    persist(); renderAll(); toast('匯入成功');
+  }catch(e){ toast('匯入失敗：文字格式不正確'); }
+}
+function resetData(){
+  if(confirm('確定要清除所有紀錄並還原到預載資料？此動作無法復原。')){
+    state=seedState(); persist(); renderAll(); toast('已重設');
+  }
+}
+
+/* ================= 持久儲存 + 備份提醒 ================= */
+async function requestPersist(){
+  try{
+    if(navigator.storage && navigator.storage.persist){
+      storagePersisted = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+      if(!storagePersisted) storagePersisted = await navigator.storage.persist();
+    }
+  }catch(e){ storagePersisted=null; }
+  renderBackupStatus();
+}
+function daysSince(ts){ return ts? (Date.now()-ts)/86400000 : Infinity; }
+function backupOverdue(){
+  const unbacked = (state.lastModified||0) > (state.lastBackup||0);
+  return unbacked && daysSince(state.lastBackup) >= BACKUP_REMIND_DAYS;
+}
+function renderBackupStatus(){
+  const el=document.getElementById('backupStatus');
+  if(el){
+    const d=daysSince(state.lastBackup);
+    const when = d===Infinity ? '尚未備份' : (d<1 ? '今天' : Math.floor(d)+' 天前');
+    const unbacked = (state.lastModified||0) > (state.lastBackup||0);
+    let persistTxt = storagePersisted===true ? '・持久儲存：已啟用' : (storagePersisted===false ? '・持久儲存：瀏覽器未授予（請加到主畫面並定期備份）' : '');
+    el.innerHTML = '上次備份：<b>'+when+'</b>'+(unbacked?'（有未備份的改動）':'')+persistTxt;
+  }
+  const bar=document.getElementById('backupReminder');
+  if(bar){
+    if(backupOverdue() && !reminderDismissed){ bar.classList.add('show'); }
+    else { bar.classList.remove('show'); }
+  }
+}
+function dismissReminder(){ reminderDismissed=true; renderBackupStatus(); }
+
+/* ================= toast ================= */
+let toastT=null;
+function toast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),1800);
+}
+
+/* ================= 初始化 ================= */
+function renderAll(){
+  renderSummary(); renderHistory(); renderCost(); renderSettings(); renderHourly();
+  renderBackupStatus();
+  try{ drawChart(null); }catch(e){}
+}
+// 預設目標日期＝今天+90天
+(function initDefaults(){
+  const h=sortedHistory();
+  const base=h.length?h[h.length-1].date:todayStr();
+  document.getElementById('targetDate').value=addDays(base,90);
+})();
+renderAll();
+requestPersist();
+</script>
+</body>
+</html>
