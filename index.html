@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+<meta name="theme-color" content="#0f1420">
+<meta name="apple-mobile-web-app-title" content="同步器">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon.png">
+<link rel="icon" href="./icon.png">
 <title>同步器計算機</title>
 <style>
   :root{
@@ -112,6 +118,14 @@
   <h1>同步器計算機</h1>
   <div class="sub">記錄每週等級變化 → 反推資源產量 → 推算未來到達點。資料存在本機瀏覽器。</div>
 
+  <div class="warnbox" id="updateBar">
+    🔄 <span id="updateMsg"></span>　你的紀錄存在瀏覽器本機，更新版本不會動到它。
+    <div class="toolbar" style="margin-top:8px">
+      <button class="btn sm" onclick="applyUpdate()">載入新版</button>
+      <button class="btn sm sec" onclick="document.getElementById('updateBar').classList.remove('show')">稍後</button>
+    </div>
+  </div>
+
   <div class="warnbox" id="backupReminder">
     ⚠️ 你有一段時間沒備份了，資料只存在這台裝置、可能被瀏覽器清除。建議現在備份一份文字。
     <div class="toolbar" style="margin-top:8px">
@@ -188,7 +202,7 @@
     <div class="card">
       <h2>趨勢圖 <span class="tag">實際 / 理論 / 推算</span></h2>
       <canvas id="chart" height="230"></canvas>
-      <div class="warnbox" id="chartFallback" style="display:none">圖表元件（CDN）載入失敗，可能是離線或網路被擋。<b>計算與記錄功能完全不受影響</b>，連上網重新整理即可看到趨勢圖。</div>
+      <div class="warnbox" id="chartFallback" style="display:none">圖表元件載入失敗，多半是 chart.umd.min.js 沒跟 index.html 放在同一個資料夾。<b>計算與記錄功能完全不受影響。</b></div>
       <div class="hint">實線=歷史，虛線=往後推算。理論線與實際線的差距即囤積量。</div>
     </div>
   </div>
@@ -286,13 +300,18 @@
     <div class="hint" id="backupStatus" style="margin-top:8px"></div>
   </div>
 
-  <div class="sub" style="text-align:center; margin-top:4px">同步器計算機 · 純前端 · 資料僅存於本機</div>
+  <div class="sub" style="text-align:center; margin-top:4px">同步器計算機 · 純前端 · 資料僅存於本機 · 版本 <span id="appVer">—</span></div>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- 圖表元件放在自己的 repo，不依賴外部 CDN，離線也畫得出來 -->
+<script src="./chart.umd.min.js"></script>
 <script>
+/* ================= 版本 ================= */
+// 改版時把這行的日期／字母往上加，頁面會自動偵測到並提示載入新版
+const APP_VERSION = '2026-08-14b';   // 改版時 sw.js 的 SW_VERSION 要一起改
+
 /* ================= 狀態與預設資料 ================= */
 const LS_KEY = 'syncCalc_v1';
 
@@ -965,6 +984,29 @@ function renderBackupStatus(){
 }
 function dismissReminder(){ reminderDismissed=true; renderBackupStatus(); }
 
+/* ================= 版本檢查 =================
+   GitHub Pages 會叫瀏覽器把 HTML 快取約 10 分鐘，iOS 加到主畫面後更黏，
+   常常推了新版打開還是舊的。這裡繞過快取抓一份原始碼比對版本號。 */
+async function checkUpdate(){
+  if(!/^https?:$/.test(location.protocol)) return;   // 本機開檔案時不檢查
+  try{
+    const res=await fetch(location.pathname+'?_cb='+Date.now(), {cache:'no-store'});
+    if(!res.ok) return;
+    const m=(await res.text()).match(/APP_VERSION\s*=\s*'([^']+)'/);
+    if(!m || m[1]===APP_VERSION) return;
+    document.getElementById('updateMsg').textContent='線上已有新版 '+m[1]+'，你現在開的是 '+APP_VERSION+'。';
+    document.getElementById('updateBar').classList.add('show');
+  }catch(e){ /* 離線或被擋，安靜略過 */ }
+}
+// 帶上時間戳重新載入，強制繞過快取拿新檔
+function applyUpdate(){ location.replace(location.pathname+'?v='+Date.now()); }
+
+// 註冊 Service Worker：把整包存在手機裡，之後開啟不用網路。失敗就當沒這回事，功能不受影響。
+function registerSW(){
+  if(!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+}
+
 /* ================= toast ================= */
 let toastT=null;
 function toast(msg){
@@ -984,8 +1026,11 @@ function renderAll(){
   const base=h.length?h[h.length-1].date:todayStr();
   document.getElementById('targetDate').value=addDays(base,90);
 })();
+document.getElementById('appVer').textContent=APP_VERSION;
 renderAll();
 requestPersist();
+registerSW();
+checkUpdate();
 </script>
 </body>
 </html>
