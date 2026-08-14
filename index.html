@@ -310,7 +310,7 @@
 <script>
 /* ================= 版本 ================= */
 // 改版時把這行的日期／字母往上加，頁面會自動偵測到並提示載入新版
-const APP_VERSION = '2026-08-14b';   // 改版時 sw.js 的 SW_VERSION 要一起改
+const APP_VERSION = '2026-08-14c';   // 改版時 sw.js 的 SW_VERSION 要一起改
 
 /* ================= 狀態與預設資料 ================= */
 const LS_KEY = 'syncCalc_v1';
@@ -430,7 +430,23 @@ function fmtDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(
 function todayStr(){ return fmtDate(new Date()); }
 // 以本地時間格式化，避免 toISOString 轉 UTC 造成跨時區掉一天
 function addDays(dateStr, days){ const d=parseDate(dateStr); d.setDate(d.getDate()+Math.round(days)); return fmtDate(d); }
-function sortedHistory(){ return [...state.history].filter(h=>h.date).sort((a,b)=>parseDate(a.date)-parseDate(b.date)); }
+// 日期必須是 YYYY-MM-DD 且落在合理年份，否則一律當成無效（避免打到一半的值汙染推算）
+function isValidDateStr(s){
+  if(typeof s!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const y=+s.slice(0,4); if(y<2000||y>2100) return false;
+  return !isNaN(parseDate(s).getTime());
+}
+function sortedHistory(){ return [...state.history].filter(h=>isValidDateStr(h.date)).sort((a,b)=>parseDate(a.date)-parseDate(b.date)); }
+// 週增幅：兩列都有理論就比理論，否則兩列都有實際就比實際，混著比沒有意義
+function histDelta(row, prev){
+  if(!row||!prev) return null;
+  const t=x=>(x.theo!=null&&x.theo!==''&&!isNaN(+x.theo))?+x.theo:null;
+  const a=x=>(x.actual!=null&&x.actual!==''&&!isNaN(+x.actual))?+x.actual:null;
+  if(t(row)!=null&&t(prev)!=null) return t(row)-t(prev);
+  if(a(row)!=null&&a(prev)!=null) return a(row)-a(prev);
+  return null;
+}
+function fmtDelta(d){ return d==null?'—':((d>=0?'+':'')+fmtLvl(d)); }
 function segmentOf(level){
   const t=state.costTable;
   for(const r of t){ if(level>=r.from && level<=r.to) return r; }
@@ -477,7 +493,7 @@ function deriveProduction(){
   for(let i=1;i<series.length;i++){
     const p0=series[i-1], p1=series[i];
     if(p1.skip){ skipped++; continue; }   // 一次性發放／不可靠的推估段，整段排除
-    const days=dayDiff(p0.date,p1.date); if(days<=0) continue;
+    const days=dayDiff(p0.date,p1.date); if(!isFinite(days) || days<=0) continue;
     const weeks=days/7;
     const cs = p1.level>p0.level ? costSum(p0.level,p1.level) : {gold:0,red:0,combat:0};
     const dl = Math.max(0, p1.level-p0.level);
@@ -489,6 +505,7 @@ function deriveProduction(){
   let normalIv = iv.filter(x=>!x.mainline);
   if(normalIv.length<1) normalIv = iv.slice();
   const normal = avg(normalIv.slice(-w));
+  if(!normal) return null;                    // 資料異常（例如日期壞掉）→ 當作無法反推，不要往下爆掉
   // 主線加成 M：全歷史 主線週 vs 平常週
   const mlIv=iv.filter(x=>x.mainline), nlIv=iv.filter(x=>!x.mainline);
   let M, mlAuto=false;
@@ -668,25 +685,21 @@ function renderHistory(){
   shown.forEach((row)=>{
     const idx=state.history.indexOf(row);
     const prev=h[h.indexOf(row)-1];   // 增幅一律對照完整序列，摺疊不影響數值
-    let delta='—';
-    if(prev){
-      const cur=(row.theo!=null&&row.theo!==''&&!isNaN(+row.theo))?+row.theo:+row.actual;
-      const pv=(prev.theo!=null&&prev.theo!==''&&!isNaN(+prev.theo))?+prev.theo:+prev.actual;
-      const d=cur-pv; delta=(d>=0?'+':'')+fmtLvl(d);
-    }
+    const delta=fmtDelta(histDelta(row,prev));
     // 囤積量 = 理論 − 實際
     let stock='—';
     if(row.theo!=null && row.theo!=='' && !isNaN(+row.theo) && row.actual!=null && !isNaN(+row.actual)){
       stock='+'+fmtLvl(+row.theo-+row.actual);
     }
     const tr=document.createElement('tr');
+    tr.dataset.idx=idx;
     if(row.skip) tr.className='skiprow';
     tr.innerHTML=
       '<td><input class="date" type="date" value="'+row.date+'" onchange="editHist('+idx+',\'date\',this.value)"></td>'+
       '<td><input type="number" value="'+(row.theo??'')+'" placeholder="—" inputmode="numeric" onchange="editHist('+idx+',\'theo\',this.value)"></td>'+
       '<td><input type="number" value="'+(row.actual??'')+'" inputmode="numeric" onchange="editHist('+idx+',\'actual\',this.value)"></td>'+
-      '<td class="c-accent2">'+stock+'</td>'+
-      '<td class="'+(delta.startsWith('+')?'increase':(delta.startsWith('-')?'decrease':''))+'">'+delta+'</td>'+
+      '<td class="cell-stock c-accent2">'+stock+'</td>'+
+      '<td class="cell-delta '+(delta.startsWith('+')?'increase':(delta.startsWith('-')?'decrease':''))+'">'+delta+'</td>'+
       '<td class="center"><input type="checkbox" '+(row.mainline?'checked':'')+' onchange="editHist('+idx+',\'mainline\',this.checked)"></td>'+
       '<td class="center"><input type="checkbox" '+(row.skip?'checked':'')+' title="勾選＝這一段不計入產量反推（一次性發放、補記、推估不可靠時用）" onchange="editHist('+idx+',\'skip\',this.checked)"></td>'+
       '<td class="center"><button class="rowdel" onclick="delHist('+idx+')">✕</button></td>';
@@ -701,11 +714,47 @@ function renderHistory(){
     }
   }
 }
+/* ── 編輯中不要重建表格 ────────────────────────────────────
+   <input type="date"> 只要湊得出合法日期就會觸發 change（打第一個數字就會），
+   若當場 renderAll() 會把使用者正在打字的輸入框砍掉重建，變成只能改第一個數字。
+   作法：立刻存檔並更新摘要／圖表，但表格本身等焦點離開後才重建（重建＝重新排序）。*/
+const _renderTimers={};
+function scheduleRender(key, containerSel, fn){
+  clearTimeout(_renderTimers[key]);
+  const poll=()=>{
+    const a=document.activeElement;
+    if(a && a.closest && a.closest(containerSel)){ _renderTimers[key]=setTimeout(poll,300); return; }
+    fn();
+  };
+  _renderTimers[key]=setTimeout(poll,300);
+}
+// 就地更新「囤積 / 週增幅 / 不計」這幾個算出來的欄位，不動輸入框
+function refreshHistComputed(){
+  const h=sortedHistory();
+  document.querySelectorAll('#histBody tr').forEach(tr=>{
+    const row=state.history[+tr.dataset.idx]; if(!row) return;
+    const prev=h[h.indexOf(row)-1];
+    const delta=fmtDelta(histDelta(row,prev));
+    let stock='—';
+    if(row.theo!=null && row.theo!=='' && !isNaN(+row.theo) && row.actual!=null && !isNaN(+row.actual))
+      stock='+'+fmtLvl(+row.theo-+row.actual);
+    const sc=tr.querySelector('.cell-stock'), dc=tr.querySelector('.cell-delta');
+    if(sc) sc.textContent=stock;
+    if(dc){ dc.textContent=delta;
+      dc.className='cell-delta '+(delta.startsWith('+')?'increase':(delta.startsWith('-')?'decrease':'')); }
+    tr.classList.toggle('skiprow', !!row.skip);
+  });
+}
 function editHist(i,f,v){
-  if(f==='theo'||f==='actual') state.history[i][f]= v===''?null:+v;
+  if(f==='date'){ if(!isValidDateStr(v)) return; state.history[i].date=v; }  // 打到一半的殘缺日期不覆蓋既有值
+  else if(f==='theo'||f==='actual') state.history[i][f]= v===''?null:+v;
+  else if(f==='mainline'||f==='skip') state.history[i][f]=!!v;
   else state.history[i][f]=v;
-  if(f==='skip') state.history[i].skip=!!v;
-  snapshotCalib(); save(); renderAll(); // 週資料變動 → 重新校準 k
+  snapshotCalib(); save();                     // 週資料變動 → 重新校準 k
+  renderSummary(); renderHourly(); renderBackupStatus();
+  try{ drawChart(null); }catch(e){}
+  refreshHistComputed();
+  scheduleRender('hist','#histTable',renderHistory);
 }
 function delHist(i){ state.history.splice(i,1); snapshotCalib(); save(); renderAll(); }
 function addHistRow(){
@@ -748,7 +797,13 @@ function renderCost(){
   const mg=document.getElementById('costMigrated');
   if(mg) mg.style.display = costMigrated ? 'block' : 'none';
 }
-function editCost(i,f,v){ state.costTable[i][f]=+v; sortCost(); save(); renderAll(); }
+// 同上：按 Enter 時焦點還在輸入框，等離開再重建（重建會依段起重新排序）
+function editCost(i,f,v){
+  state.costTable[i][f]=+v; sortCost(); save();
+  renderSummary(); renderHourly();
+  try{ drawChart(null); }catch(e){}
+  scheduleRender('cost','#costTable',renderCost);
+}
 function delCost(i){ state.costTable.splice(i,1); save(); renderAll(); }
 function addCostRow(){
   const t=state.costTable.slice().sort((a,b)=>a.from-b.from); const last=t[t.length-1];

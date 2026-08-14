@@ -3,7 +3,7 @@
 
    ⚠️ 改版時：這裡的 SW_VERSION 要跟 index.html 裡的 APP_VERSION 一起往上加。
    版本號一變，瀏覽器就會裝新的、把舊快取清掉。 */
-const SW_VERSION = '2026-08-14b';
+const SW_VERSION = '2026-08-14c';
 const CACHE = 'synccalc-' + SW_VERSION;
 
 const ASSETS = [
