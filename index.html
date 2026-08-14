@@ -90,8 +90,9 @@
   .locked input{background:transparent; border-color:transparent; color:var(--muted); pointer-events:none;}
   .collapsed .body{display:none;}
   .increase{color:var(--ok);} .decrease{color:var(--red);}
-  tr.autorow input{color:var(--muted); font-style:italic;}
-  .estbadge{display:inline-block; margin-left:4px; font-size:9px; color:var(--warn); border:1px solid #5c4626; border-radius:4px; padding:0 3px; vertical-align:middle;}
+  .spanbadge{display:inline-block; margin-left:4px; font-size:9px; color:var(--muted); border:1px solid var(--line); border-radius:4px; padding:0 3px; vertical-align:middle;}
+  tr.skiprow td{opacity:.55;}
+  .c-accent2{color:var(--accent2);}
   .hint{font-size:12px; color:var(--muted); margin-top:8px;}
   .warnbox{background:#3a2e1c; border:1px solid #5c4626; color:var(--warn); border-radius:10px; padding:9px 11px; font-size:12.5px; margin-top:10px; display:none;}
   .warnbox.show{display:block;}
@@ -187,49 +188,54 @@
     <div class="card">
       <h2>趨勢圖 <span class="tag">實際 / 理論 / 推算</span></h2>
       <canvas id="chart" height="230"></canvas>
+      <div class="warnbox" id="chartFallback" style="display:none">圖表元件（CDN）載入失敗，可能是離線或網路被擋。<b>計算與記錄功能完全不受影響</b>，連上網重新整理即可看到趨勢圖。</div>
       <div class="hint">實線=歷史，虛線=往後推算。理論線與實際線的差距即囤積量。</div>
     </div>
   </div>
 
   <!-- 記錄器 -->
   <div class="card">
-    <h2>記錄器 <span class="tag">每週一列</span></h2>
+    <h2>記錄器 <span class="tag">每週一列・預設只顯示最近 12 週</span></h2>
     <div class="tblwrap">
       <table id="histTable">
         <thead><tr>
-          <th>日期</th><th>理論</th><th>實際</th><th>週增幅</th><th class="center">主線</th><th></th>
+          <th>日期</th><th>理論</th><th>實際</th><th>囤積</th><th>週增幅</th><th class="center">主線</th><th class="center">不計</th><th></th>
         </tr></thead>
         <tbody id="histBody"></tbody>
       </table>
     </div>
     <div class="toolbar">
       <button class="btn sm sec" onclick="addHistRow()">＋ 新增一週</button>
+      <button class="btn sm sec" id="histToggle" onclick="toggleHistAll()"></button>
     </div>
-    <div class="hint">「理論」是把囤積資源全花光能到幾級（新資料，可留空）；「實際」是當前真正等級。</div>
+    <div class="hint">「理論」是把囤積資源全花光能到幾級——這欄才是產量的乾淨基準，推算只看它；「實際」是當前真正等級，兩者的差就是囤積量。<b>「不計」</b>勾起來代表這一段不進產量反推，用在主線一次性發放、補記、或推估值不可靠的區間（灰字顯示）。</div>
   </div>
 
   <!-- 成本表 -->
   <div class="card" id="costCard">
-    <h2>分段成本表 <span class="tag" id="costTag">每 50 級一段・金幣/戰鬥單位 k</span></h2>
+    <h2>分段成本表 <span class="tag" id="costTag">段界可自訂・金幣/戰鬥單位 k</span></h2>
+    <div class="warnbox" id="costMigrated" style="display:none">
+      ℹ️ 依 0814 實測規格更新：舊版「每段 +10%」是錯的，實際為 <b>+5%</b>，且 <b>801–1000 三種資源全部凍結</b>。成本表已自動換成新實測值，你的歷史紀錄與設定都保留。
+    </div>
     <div class="body">
       <div class="tblwrap">
         <table id="costTable">
           <thead><tr>
-            <th>段起</th><th>段迄</th><th>金幣/級 (k)</th><th>紅球/級</th><th>戰鬥/級 (k)</th><th></th>
+            <th>段起</th><th>段迄</th><th class="center">跨幅</th><th>金幣/級 (k)</th><th>紅球/級</th><th>戰鬥/級 (k)</th><th></th>
           </tr></thead>
           <tbody id="costBody"></tbody>
         </table>
       </div>
       <div class="toolbar">
         <button class="btn sm sec" onclick="addCostRow()">＋ 新增一段</button>
-        <button class="btn sm sec" onclick="fillCostTo1000()">自動補到 1000 級</button>
-        <button class="btn sm sec" onclick="recomputeAutoBtn()">依成長率重算「估」段</button>
+        <button class="btn sm sec" onclick="loadDefaultCost()">載入 0814 實測預設</button>
       </div>
     </div>
+    <div class="warnbox" id="costWarn"></div>
     <div class="toolbar">
       <button class="btn sm" id="lockBtn" onclick="toggleLock()">🔒 鎖定</button>
     </div>
-    <div class="hint">851 級以上是依「每段成長率」自動產生的<b>估算段（標「估」、灰字）</b>，改成遊戲實際值即轉為正式資料。成長率可在設定調整，改完按「依成長率重算」。</div>
+    <div class="hint">數值全部手填，不用公式生成。<b>段界可自訂寬度</b>（801–1000 是單一 200 級凍結段），改「段起／段迄」即可；系統會自動檢查重疊與缺口。700 級以下不在表內，歷史反推會沿用最低段。</div>
   </div>
 
   <!-- 設定 -->
@@ -254,19 +260,8 @@
             <label class="fld">推算延伸週數（圖）</label>
             <input type="number" id="setProjWeeks" min="4" max="200">
           </div>
-          <div>
-            <label class="fld">成本・金幣每段成長 %</label>
-            <input type="number" id="setCostGold" step="0.5">
-          </div>
-          <div>
-            <label class="fld">成本・戰鬥每段成長 %</label>
-            <input type="number" id="setCostCombat" step="0.5">
-          </div>
-          <div>
-            <label class="fld">成本・紅球每段 +</label>
-            <input type="number" id="setCostRed">
-          </div>
         </div>
+        <div class="hint" style="margin-top:10px">成本成長率設定已移除：新規格證實 801–1000 成本凍結，公式推算會嚴重失真，成本一律以成本表手填實測值為準。</div>
         <label class="fld" style="margin-top:12px">主線開啟月份（每次開啟＝產量永久提升，複利累加）</label>
         <div class="mlmonths" id="mlMonths"></div>
         <div class="toolbar"><button class="btn sm" onclick="saveSettings()">套用設定</button></div>
@@ -301,55 +296,76 @@
 /* ================= 狀態與預設資料 ================= */
 const LS_KEY = 'syncCalc_v1';
 
-// 預載：一年實測「實際等級」（每週一）。理論等級留空，往後開始記。
-const SEED_ACTUAL = [
-  ['2025-09-01',425],['2025-09-08',432],['2025-09-15',439],['2025-09-22',447],['2025-09-29',455],
-  ['2025-10-06',462],['2025-10-13',469],['2025-10-20',476],['2025-10-27',482],
-  ['2025-11-03',491],['2025-11-10',498],['2025-11-17',504],['2025-11-24',516],
-  ['2025-12-01',523],['2025-12-08',531],['2025-12-15',538],['2025-12-22',546],['2025-12-29',551],
-  ['2026-01-05',561],['2026-01-12',567],['2026-01-19',575],['2026-01-26',582],
-  ['2026-02-02',588],['2026-02-09',596],['2026-02-16',603],['2026-02-23',611],
-  ['2026-03-02',621],['2026-03-09',627],['2026-03-16',634],['2026-03-23',641],['2026-03-30',647],
-  ['2026-04-06',654],['2026-04-13',660],['2026-04-20',666],['2026-04-27',677],
-  ['2026-05-04',686],['2026-05-11',694],['2026-05-18',701],['2026-05-25',707],
-  ['2026-06-01',713],['2026-06-08',719],['2026-06-15',726],['2026-06-22',732],['2026-06-28',738],
-  ['2026-07-06',744],['2026-07-13',750],['2026-07-20',756],['2026-07-27',762],
-  ['2026-08-03',769]
+/* 預載歷史（每週一）：[日期, 理論, 實際, 主線, 不計入反推]
+   ─ 2025-09-01 ~ 2026-05-11：邊賺邊花，理論≈實際，理論欄留空
+   ─ 2026-05-18 起開始囤積：理論仍以 ~6 級/週成長（推估），實際只爬 ~1.85 級/週
+   ─ 2026-08-13 主線正式開啟並清空囤積 → 8/14 實際 783、理論 786（剩一點資源）
+   ─ 8/10→8/14 含主線一次性發放且 8/10 推估偏低，整段標記為不計入產量反推 */
+const SEED_HISTORY = [
+  ['2025-09-01',null,425],['2025-09-08',null,432],['2025-09-15',null,439],['2025-09-22',null,447],['2025-09-29',null,455],
+  ['2025-10-06',null,462],['2025-10-13',null,469],['2025-10-20',null,476],['2025-10-27',null,482],
+  ['2025-11-03',null,491],['2025-11-10',null,498],['2025-11-17',null,504],['2025-11-24',null,516],
+  ['2025-12-01',null,523],['2025-12-08',null,531],['2025-12-15',null,538],['2025-12-22',null,546],['2025-12-29',null,551],
+  ['2026-01-05',null,561],['2026-01-12',null,567],['2026-01-19',null,575],['2026-01-26',null,582],
+  ['2026-02-02',null,588],['2026-02-09',null,596],['2026-02-16',null,603],['2026-02-23',null,611],
+  ['2026-03-02',null,621],['2026-03-09',null,627],['2026-03-16',null,634],['2026-03-23',null,641],['2026-03-30',null,647],
+  ['2026-04-06',null,654],['2026-04-13',null,660],['2026-04-20',null,666],['2026-04-27',null,677],
+  ['2026-05-04',null,686],['2026-05-11',null,694],
+  ['2026-05-18',701,701],                       // 最後一筆「理論=實際」的實測錨點
+  ['2026-05-25',707,703],['2026-06-01',713,705],['2026-06-08',719,707],['2026-06-15',726,708],
+  ['2026-06-22',732,710],['2026-06-28',738,712],['2026-07-06',744,714],['2026-07-13',750,716],
+  ['2026-07-20',756,718],['2026-07-27',762,719],
+  ['2026-08-03',769,721,false],['2026-08-10',775,723,false],   // 主線 8/13 才開，8 月前兩週不算主線
+  ['2026-08-13',null,724,false],                                // 清空囤積前的實測實際等級
+  ['2026-08-14',786,783,true,true]                              // 主線開啟後實測；整段不計入反推
 ];
-// 成本表（金幣/戰鬥為 k 值，紅球為原始值）。851 級以上依成長率自動產生(_auto)，可直接改成實際值。
+/* 成本表（金幣/戰鬥為 k 值，紅球為原始值）— 依 0814 實測規格。
+   重點：漲幅為 +5%（非舊版誤判的 +10%），且 801–1000 三種資源全部凍結（單一 200 級段），
+   1001 起解凍補漲。段界不再固定 50 級，一律以 from/to 自訂。 */
 const SEED_COST = [
-  {from:651,to:700, gold:9380,  red:17000, combat:85574},
-  {from:701,to:750, gold:10422, red:18000, combat:95082},
-  {from:751,to:800, gold:11464, red:19000, combat:105090},
-  {from:801,to:850, gold:12510, red:20000, combat:116049},
+  {from:701, to:750,  gold:10422, red:18000, combat:95082},
+  {from:751, to:800,  gold:10943, red:19000, combat:100000},
+  {from:801, to:1000, gold:11490, red:20000, combat:105000},
+  {from:1001,to:1200, gold:12958, red:22000, combat:119000},
 ];
-// 成本每段成長：金幣/戰鬥 +10%、紅球 +1000（皆可調）
-const DEFAULT_SETTINGS = { windowWeeks:4, boostPct:3, redBonus:504, projWeeks:52, mainlineMonths:[2,4,8,11], costGold:10, costCombat:10, costRed:1000, mainlineAuto:true };
-const COST_MAX_LEVEL = 1000; // 自動產生分段到此等級
+// 成本表規格版本：與 state 內不同時，成本表會被覆蓋為上表（歷史紀錄與設定保留）
+const COST_SPEC_VERSION = '2026-08-14';
+const DEFAULT_SETTINGS = { windowWeeks:4, boostPct:3, redBonus:504, projWeeks:52, mainlineMonths:[2,4,8,11], mainlineAuto:true };
 const BACKUP_REMIND_DAYS = 7; // 有未備份改動且距上次備份超過此天數 → 提醒
 // 每小時被動產量（僅作參考/交叉檢查，不進推算）。金幣為原始值、戰鬥為 k、紅球為原始值
 const SEED_HOURLY = { gold:70919, red:115, combat:726 };
 
 function seedState(){
   const mlM = DEFAULT_SETTINGS.mainlineMonths;
-  const history = SEED_ACTUAL.map(([date,actual])=>({
-    date, theo:null, actual,
-    mainline: mlM.includes(new Date(date+'T00:00').getMonth()+1)
+  const history = SEED_HISTORY.map(([date,theo,actual,mainline,skip])=>({
+    date, theo, actual,
+    mainline: (mainline!=null) ? mainline : mlM.includes(new Date(date+'T00:00').getMonth()+1),
+    skip: !!skip
   }));
-  return { history, costTable: JSON.parse(JSON.stringify(SEED_COST)), costLocked:false, settings:{...DEFAULT_SETTINGS}, hourly:{...SEED_HOURLY}, lastBackup:Date.now(), lastModified:Date.now() };
+  return { history, costTable: JSON.parse(JSON.stringify(SEED_COST)), costLocked:false, settings:{...DEFAULT_SETTINGS}, hourly:{...SEED_HOURLY}, lastBackup:Date.now(), lastModified:Date.now(), costSpecVersion:COST_SPEC_VERSION };
 }
 
 let state = load() || seedState();
+let costMigrated = false;   // 本次載入是否覆蓋過舊成本表（開啟後提示用）
 
-// 遷移：補齊新設定欄位，並自動把成本表分段補到 COST_MAX_LEVEL
+// 遷移：補齊新設定欄位；成本表規格過期 → 覆蓋成新實測值（歷史紀錄／設定／時薪全部保留）
 (function migrate(){
   state.settings = Object.assign({}, DEFAULT_SETTINGS, state.settings || {});
+  // 舊版的成長率設定已無意義（801–1000 凍結），移除避免殘留
+  delete state.settings.costGold; delete state.settings.costCombat; delete state.settings.costRed;
   if(!state.hourly) state.hourly = {...SEED_HOURLY};
   // 校準基準時薪：記錄「最近一次週資料當下的時薪」，用來配對反推產量算出有效倍率 k
   if(!state.calibHourly) state.calibHourly = {...state.hourly};
   if(state.lastBackup==null) state.lastBackup = Date.now();
   if(state.lastModified==null) state.lastModified = Date.now();
-  extendCostTo(COST_MAX_LEVEL);
+  if(state.costSpecVersion !== COST_SPEC_VERSION){
+    state.costTable = JSON.parse(JSON.stringify(SEED_COST));
+    state.costSpecVersion = COST_SPEC_VERSION;
+    state.costLocked = false;
+    costMigrated = true;
+    persist();
+  }
+  sortCost();
 })();
 let storagePersisted=null;      // 瀏覽器是否已授予持久儲存（顯示用）
 let reminderDismissed=false;    // 本次工作階段是否已關閉備份提醒
@@ -360,28 +376,29 @@ function load(){ try{ const s=localStorage.getItem(LS_KEY); return s?JSON.parse(
 function save(){ state.lastModified=Date.now(); persist(); if(typeof renderBackupStatus==='function') renderBackupStatus(); }
 function persist(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){ toast('儲存失敗（隱私模式？）'); } }
 
-// 依成長率，從現有最高段往上自動補分段到 maxLevel（不覆蓋既有列，新列標記 _auto）
-function extendCostTo(maxLevel){
-  const t=state.costTable.slice().sort((a,b)=>a.from-b.from);
-  if(!t.length) { return; }
-  const S=state.settings||DEFAULT_SETTINGS;
-  let last=t[t.length-1];
-  let guard=0;
-  while(last.to < maxLevel && guard++<200){
-    const from=last.to+1, to=from+49;
-    const row={ from, to,
-      gold:Math.round(last.gold*(1+(S.costGold||10)/100)),
-      red: last.red + (S.costRed!=null?S.costRed:1000),
-      combat:Math.round(last.combat*(1+(S.costCombat||10)/100)),
-      _auto:true };
-    t.push(row); last=row;
-  }
-  state.costTable=t;
+// 成本表一律手動維護（新規格：不靠公式生成數值）。這裡只保留排序與結構檢查。
+function sortCost(){
+  state.costTable = (state.costTable||[]).slice().sort((a,b)=>a.from-b.from);
 }
-// 移除自動段後，依目前成長率重新產生（保留使用者手改成的實際值 = 已無 _auto 標記者）
-function recomputeAuto(){
-  state.costTable=state.costTable.filter(r=>!r._auto);
-  extendCostTo(COST_MAX_LEVEL);
+// 回傳結構問題清單：段重疊、段之間有缺口、起訖顛倒
+function costIssues(){
+  const t=state.costTable.slice().sort((a,b)=>a.from-b.from);
+  const out=[];
+  for(let i=0;i<t.length;i++){
+    if(t[i].to < t[i].from) out.push('第 '+(i+1)+' 段起訖顛倒（'+t[i].from+'–'+t[i].to+'）');
+    if(i>0){
+      if(t[i].from <= t[i-1].to) out.push('段重疊：'+t[i-1].from+'–'+t[i-1].to+' 與 '+t[i].from+'–'+t[i].to);
+      else if(t[i].from > t[i-1].to+1) out.push('段缺口：'+(t[i-1].to+1)+'–'+(t[i].from-1)+' 沒有成本資料');
+    }
+  }
+  return out;
+}
+// 一鍵載入 0814 實測預設成本表（覆蓋現有列）
+function loadDefaultCost(){
+  if(!confirm('要用 0814 實測預設值覆蓋整張成本表嗎？（歷史紀錄不受影響）')) return;
+  state.costTable=JSON.parse(JSON.stringify(SEED_COST));
+  state.costSpecVersion=COST_SPEC_VERSION;
+  save(); renderAll(); toast('已載入實測預設成本表');
 }
 
 /* ================= 工具 ================= */
@@ -432,13 +449,15 @@ function deriveProduction(){
   const useTheo = theoPts.length >= (w+1); // 理論資料足夠才切理論反推，否則用實際等級打底
   const metric = useTheo ? 'theo' : 'actual';
   const src = useTheo?theoPts:h;
-  const series = src.map(x=>({date:x.date, level:+(useTheo?x.theo:x.actual), mainline:!!x.mainline}))
+  const series = src.map(x=>({date:x.date, level:+(useTheo?x.theo:x.actual), mainline:!!x.mainline, skip:!!x.skip}))
                   .filter(x=>!isNaN(x.level));
   if(series.length<2) return null;
   // 逐區間（每週）計算資源產出與升級速度，並標記該週是否主線
   const iv=[];
+  let skipped=0;
   for(let i=1;i<series.length;i++){
     const p0=series[i-1], p1=series[i];
+    if(p1.skip){ skipped++; continue; }   // 一次性發放／不可靠的推估段，整段排除
     const days=dayDiff(p0.date,p1.date); if(days<=0) continue;
     const weeks=days/7;
     const cs = p1.level>p0.level ? costSum(p0.level,p1.level) : {gold:0,red:0,combat:0};
@@ -467,7 +486,8 @@ function deriveProduction(){
     metric, levelsPerWeek:normal.lvlPerWk,
     mainlineMult:M, mainlineAuto:mlAuto,
     mlLvlPerWk: mlIv.length?avg(mlIv).lvlPerWk:null,
-    intervals:Math.min(w,normalIv.length), mlIntervals:mlIv.length, nlIntervals:nlIv.length
+    intervals:Math.min(w,normalIv.length), mlIntervals:mlIv.length, nlIntervals:nlIv.length,
+    skipped
   };
 }
 
@@ -583,8 +603,11 @@ function renderSummary(){
     const speed=Math.min(sg,sr,sc);           // 平常週速率
     const mlSpeed=speed*prod.mainlineMult;    // 主線週速率
     const bn = speed===sg?'金幣':(speed===sr?'紅球':'戰鬥');
+    // 新規格：三資源被設計成幾乎同時卡，差距 <2% 時不該報單一瓶頸
+    const spread = speed>0 ? (Math.max(sg,sr,sc)-speed)/speed : 0;
+    const bnTxt = spread<0.02 ? bn+'（三者幾乎同時卡，差距 '+(Math.round(spread*1000)/10)+'%）' : bn;
     document.getElementById('sumSpeed').textContent= (Math.round(speed*100)/100)+' 級/週';
-    document.getElementById('sumBasis').textContent= (prod.metric==='theo'?'理論反推':'實際增幅')+'・平常週'+prod.intervals+'週';
+    document.getElementById('sumBasis').textContent= (prod.metric==='theo'?'理論反推':'實際增幅')+'・平常週'+prod.intervals+'週'+((prod.raw&&prod.raw.skipped)?'（排除 '+prod.raw.skipped+' 段）':'');
     const mlPct=Math.round((prod.mainlineMult-1)*100);
     const mlTxt = prod.mainlineAuto
       ? '主線加成 <span class="hl">+'+mlPct+'%</span>（歷史自動估：主線 '+ (prod.mlLvlPerWk?(Math.round(prod.mlLvlPerWk*100)/100):'—') +' vs 平常 '+(Math.round(prod.levelsPerWeek*100)/100)+' 級/週，主線週約 '+(Math.round(mlSpeed*100)/100)+' 級/週）'
@@ -605,7 +628,7 @@ function renderSummary(){
     }
     document.getElementById('prodNote').innerHTML=
       '平常週產量估計：<span class="c-gold">金幣 '+fmtK(prod.gold)+'</span>、<span class="c-red">紅球 '+fmtNum(prod.red)+'</span>、<span class="c-combat">戰鬥 '+fmtK(prod.combat)+'</span>。'
-      +'目前瓶頸：<span class="hl">'+bn+'</span>（'+(prod.metric==='theo'?'理論反推':'實際等級打底，累積理論資料後自動升級')+'）。<br>'+mlTxt+'。'+hourlyTxt;
+      +'目前瓶頸：<span class="hl">'+bnTxt+'</span>（'+(prod.metric==='theo'?'理論反推':'實際等級打底，累積理論資料後自動升級')+'）。<br>'+mlTxt+'。'+hourlyTxt;
   } else {
     document.getElementById('sumSpeed').textContent='—';
     document.getElementById('sumBasis').textContent='—';
@@ -614,33 +637,55 @@ function renderSummary(){
 }
 
 /* ================= 記錄器 ================= */
+const HIST_RECENT = 12;      // 摺疊時顯示的週數
+let histShowAll = false;     // 預設摺疊，只看最近 HIST_RECENT 列
+function toggleHistAll(){ histShowAll=!histShowAll; renderHistory(); }
 function renderHistory(){
   const body=document.getElementById('histBody');
   body.innerHTML='';
   const h=sortedHistory();
-  h.forEach((row)=>{
+  const hidden = Math.max(0, h.length-HIST_RECENT);
+  const shown = (histShowAll || !hidden) ? h : h.slice(-HIST_RECENT);
+  shown.forEach((row)=>{
     const idx=state.history.indexOf(row);
-    const prev=h[h.indexOf(row)-1];
+    const prev=h[h.indexOf(row)-1];   // 增幅一律對照完整序列，摺疊不影響數值
     let delta='—';
     if(prev){
       const cur=(row.theo!=null&&row.theo!==''&&!isNaN(+row.theo))?+row.theo:+row.actual;
       const pv=(prev.theo!=null&&prev.theo!==''&&!isNaN(+prev.theo))?+prev.theo:+prev.actual;
       const d=cur-pv; delta=(d>=0?'+':'')+fmtLvl(d);
     }
+    // 囤積量 = 理論 − 實際
+    let stock='—';
+    if(row.theo!=null && row.theo!=='' && !isNaN(+row.theo) && row.actual!=null && !isNaN(+row.actual)){
+      stock='+'+fmtLvl(+row.theo-+row.actual);
+    }
     const tr=document.createElement('tr');
+    if(row.skip) tr.className='skiprow';
     tr.innerHTML=
       '<td><input class="date" type="date" value="'+row.date+'" onchange="editHist('+idx+',\'date\',this.value)"></td>'+
       '<td><input type="number" value="'+(row.theo??'')+'" placeholder="—" inputmode="numeric" onchange="editHist('+idx+',\'theo\',this.value)"></td>'+
       '<td><input type="number" value="'+(row.actual??'')+'" inputmode="numeric" onchange="editHist('+idx+',\'actual\',this.value)"></td>'+
+      '<td class="c-accent2">'+stock+'</td>'+
       '<td class="'+(delta.startsWith('+')?'increase':(delta.startsWith('-')?'decrease':''))+'">'+delta+'</td>'+
       '<td class="center"><input type="checkbox" '+(row.mainline?'checked':'')+' onchange="editHist('+idx+',\'mainline\',this.checked)"></td>'+
+      '<td class="center"><input type="checkbox" '+(row.skip?'checked':'')+' title="勾選＝這一段不計入產量反推（一次性發放、補記、推估不可靠時用）" onchange="editHist('+idx+',\'skip\',this.checked)"></td>'+
       '<td class="center"><button class="rowdel" onclick="delHist('+idx+')">✕</button></td>';
     body.appendChild(tr);
   });
+  const btn=document.getElementById('histToggle');
+  if(btn){
+    if(!hidden){ btn.style.display='none'; }
+    else{
+      btn.style.display='';
+      btn.textContent = histShowAll ? '收合，只看最近 '+HIST_RECENT+' 週' : '顯示全部 '+h.length+' 週（另有 '+hidden+' 列已摺疊）';
+    }
+  }
 }
 function editHist(i,f,v){
   if(f==='theo'||f==='actual') state.history[i][f]= v===''?null:+v;
   else state.history[i][f]=v;
+  if(f==='skip') state.history[i].skip=!!v;
   snapshotCalib(); save(); renderAll(); // 週資料變動 → 重新校準 k
 }
 function delHist(i){ state.history.splice(i,1); snapshotCalib(); save(); renderAll(); }
@@ -649,7 +694,7 @@ function addHistRow(){
   let d=new Date();
   if(h.length){ d=addDays(h[h.length-1].date,7); } else { d=todayStr(); }
   const mlM=state.settings.mainlineMonths;
-  state.history.push({date: (typeof d==='string'?d:d), theo:null, actual:null, mainline: mlM.includes(parseDate(typeof d==='string'?d:d).getMonth()+1)});
+  state.history.push({date: (typeof d==='string'?d:d), theo:null, actual:null, mainline: mlM.includes(parseDate(typeof d==='string'?d:d).getMonth()+1), skip:false});
   snapshotCalib(); save(); renderAll();
 }
 
@@ -659,10 +704,12 @@ function renderCost(){
   body.innerHTML='';
   state.costTable.forEach((row,i)=>{
     const tr=document.createElement('tr');
-    if(row._auto){ tr.className='autorow'; tr.title='自動估算段（依成長率產生），可直接改成遊戲實際值'; }
+    const span=row.to-row.from+1;
+    tr.title='本段涵蓋 '+span+' 級';
     tr.innerHTML=
-      '<td><input type="number" value="'+row.from+'" inputmode="numeric" onchange="editCost('+i+',\'from\',this.value)">'+(row._auto?'<span class="estbadge">估</span>':'')+'</td>'+
+      '<td><input type="number" value="'+row.from+'" inputmode="numeric" onchange="editCost('+i+',\'from\',this.value)"></td>'+
       '<td><input type="number" value="'+row.to+'" inputmode="numeric" onchange="editCost('+i+',\'to\',this.value)"></td>'+
+      '<td class="center"><span class="spanbadge">'+span+' 級</span></td>'+
       '<td><input type="number" value="'+row.gold+'" inputmode="numeric" onchange="editCost('+i+',\'gold\',this.value)"></td>'+
       '<td><input type="number" value="'+row.red+'" inputmode="numeric" onchange="editCost('+i+',\'red\',this.value)"></td>'+
       '<td><input type="number" value="'+row.combat+'" inputmode="numeric" onchange="editCost('+i+',\'combat\',this.value)"></td>'+
@@ -672,21 +719,27 @@ function renderCost(){
   const card=document.getElementById('costCard');
   const btn=document.getElementById('lockBtn');
   if(state.costLocked){ card.classList.add('locked','collapsed'); btn.textContent='🔓 解鎖編輯'; document.getElementById('costTag').textContent='已鎖定（唯讀）'; }
-  else{ card.classList.remove('locked','collapsed'); btn.textContent='🔒 鎖定'; document.getElementById('costTag').textContent='每 50 級一段・金幣/戰鬥單位 k'; }
+  else{ card.classList.remove('locked','collapsed'); btn.textContent='🔒 鎖定'; document.getElementById('costTag').textContent='段界可自訂・金幣/戰鬥單位 k'; }
+  // 結構檢查（重疊 / 缺口）
+  const iss=costIssues(); const box=document.getElementById('costWarn');
+  if(box){
+    if(iss.length){ box.innerHTML='成本表結構有問題，推算可能不準：<br>・'+iss.join('<br>・'); box.classList.add('show'); }
+    else box.classList.remove('show');
+  }
+  const mg=document.getElementById('costMigrated');
+  if(mg) mg.style.display = costMigrated ? 'block' : 'none';
 }
-function editCost(i,f,v){ state.costTable[i][f]=+v; delete state.costTable[i]._auto; save(); renderAll(); }
+function editCost(i,f,v){ state.costTable[i][f]=+v; sortCost(); save(); renderAll(); }
 function delCost(i){ state.costTable.splice(i,1); save(); renderAll(); }
 function addCostRow(){
-  const S=state.settings; const t=state.costTable.slice().sort((a,b)=>a.from-b.from); const last=t[t.length-1];
-  const from=last?last.to+1:1, to=from+49;
-  state.costTable.push({from,to,
-    gold:last?Math.round(last.gold*(1+(S.costGold||10)/100)):0,
-    red:last?last.red+(S.costRed||1000):0,
-    combat:last?Math.round(last.combat*(1+(S.costCombat||10)/100)):0});
-  save(); renderAll();
+  const t=state.costTable.slice().sort((a,b)=>a.from-b.from); const last=t[t.length-1];
+  const width = last ? (last.to-last.from+1) : 50;         // 沿用上一段的寬度當預設，可直接改
+  const from = last ? last.to+1 : 1, to = from + width - 1;
+  state.costTable.push({from, to,
+    gold: last?last.gold:0, red: last?last.red:0, combat: last?last.combat:0});
+  sortCost(); save(); renderAll();
+  toast('已新增一段（沿用上一段數值，請改成實際值）');
 }
-function fillCostTo1000(){ extendCostTo(COST_MAX_LEVEL); save(); renderAll(); toast('已補足分段到 '+COST_MAX_LEVEL+' 級'); }
-function recomputeAutoBtn(){ recomputeAuto(); save(); renderAll(); toast('已依成長率重算自動段'); }
 function toggleLock(){ state.costLocked=!state.costLocked; save(); renderCost(); }
 
 /* ================= 每小時被動（參考） ================= */
@@ -721,9 +774,6 @@ function renderSettings(){
   document.getElementById('setBoost').value=S.boostPct;
   document.getElementById('setMlAuto').value=S.mainlineAuto?'1':'0';
   document.getElementById('setProjWeeks').value=S.projWeeks;
-  document.getElementById('setCostGold').value=S.costGold;
-  document.getElementById('setCostCombat').value=S.costCombat;
-  document.getElementById('setCostRed').value=S.costRed;
   const box=document.getElementById('mlMonths'); box.innerHTML='';
   const names=['','1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
   for(let m=1;m<=12;m++){
@@ -738,12 +788,8 @@ function saveSettings(){
   S.boostPct=+document.getElementById('setBoost').value||0;
   S.mainlineAuto=document.getElementById('setMlAuto').value==='1';
   S.projWeeks=Math.max(4,+document.getElementById('setProjWeeks').value||52);
-  S.costGold=+document.getElementById('setCostGold').value||0;
-  S.costCombat=+document.getElementById('setCostCombat').value||0;
-  S.costRed=+document.getElementById('setCostRed').value||0;
   S.mainlineMonths=[...document.querySelectorAll('#mlMonths input:checked')].map(x=>+x.dataset.m);
-  recomputeAuto(); // 成長率改了 → 重算自動段
-  save(); renderAll(); toast('設定已套用，成本估算段已重算');
+  save(); renderAll(); toast('設定已套用');
 }
 
 /* ================= 計算機 UI ================= */
@@ -799,12 +845,18 @@ function runCalc(){
   }
   box.classList.add('show');
   if(res.overFlag){ warn.textContent='注意：推算已超出成本表最後一段，沿用最後一段成本估算，建議到成本表補列後段以提高準確度。'; warn.classList.add('show'); }
-  drawChart(res); // 用這次推算路徑更新圖
+  try{ drawChart(res); }catch(e){}  // 圖畫不出來也不能影響計算結果
 }
 
 /* ================= 圖表 ================= */
 let chart=null;
 function drawChart(projRes){
+  // Chart.js 走 CDN，離線／被擋時要靜靜降級，不能讓計算機一起掛掉
+  if(typeof Chart==='undefined'){
+    const c=document.getElementById('chartFallback');
+    if(c) c.style.display='block';
+    return;
+  }
   const h=sortedHistory();
   if(!h.length) return;
   // 預設推算（若沒帶入計算結果）
@@ -863,8 +915,16 @@ function importData(){
     if(!obj.history||!obj.costTable) throw new Error('格式不符');
     state=obj;
     if(!state.settings) state.settings={...DEFAULT_SETTINGS};
+    delete state.settings.costGold; delete state.settings.costCombat; delete state.settings.costRed;
+    let migrated=false;
+    if(state.costSpecVersion !== COST_SPEC_VERSION){   // 舊備份 → 成本表換成新實測值，紀錄保留
+      state.costTable=JSON.parse(JSON.stringify(SEED_COST));
+      state.costSpecVersion=COST_SPEC_VERSION; state.costLocked=false; migrated=true;
+    }
+    sortCost();
     state.lastBackup=Date.now(); state.lastModified=Date.now(); // 剛從備份還原＝已安全
-    persist(); renderAll(); toast('匯入成功');
+    costMigrated=migrated;
+    persist(); renderAll(); toast(migrated?'匯入成功（成本表已更新為 0814 實測值）':'匯入成功');
   }catch(e){ toast('匯入失敗：文字格式不正確'); }
 }
 function resetData(){
