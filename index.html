@@ -218,6 +218,7 @@
         <tbody id="histBody"></tbody>
       </table>
     </div>
+    <div class="warnbox" id="histWarn"></div>
     <div class="toolbar">
       <button class="btn sm sec" onclick="addHistRow()">＋ 新增一週</button>
       <button class="btn sm sec" id="histToggle" onclick="toggleHistAll()"></button>
@@ -306,7 +307,7 @@
 <script>
 /* ================= 版本 ================= */
 // 改版時把這行的日期／字母往上加，頁面會自動偵測到並提示載入新版
-const APP_VERSION = '2026-08-15a';   // 改版時 sw.js 的 SW_VERSION 要一起改
+const APP_VERSION = '2026-08-15h';   // 改版時 sw.js 的 SW_VERSION 要一起改
 
 /* ================= 狀態與預設資料 ================= */
 const LS_KEY = 'syncCalc_v1';
@@ -516,9 +517,24 @@ function deriveProduction(){
   const winMl=win.filter(x=>x.mainline).length;
   const normal = avg(win.map(x=>({gold:x.gold, red:x.red, combat:x.combat, lvlPerWk:x.lvlPerWk, weeks:x.useWeeks})));
   if(!normal) return null;                    // 資料異常（例如日期壞掉）→ 當作無法反推，不要往下爆掉
+
+  /* 異常段偵測：窗口內某一段的速率跟平均差太多，通常是活動一次性發放或補記。
+     短區間尤其危險 —— 1 天內 +3 級 = 21 級/週，就算只佔 28 天的 1/28，
+     也會把基準整個往上拉。抓出來讓使用者決定要不要勾「不計」。 */
+  const outliers=[];
+  if(normal.lvlPerWk>0){
+    win.forEach(x=>{
+      const ratio=x.lvlPerWk/normal.lvlPerWk;
+      /* 門檻要隨區間長度放寬：等級是整數，記錄點越密、取整誤差佔比越大。
+         3 天的區間光是 ±0.5 級的取整就等於 ±20% 的速率，不該被當成異常。 */
+      const quant=(0.5*7/Math.max(x.days,0.5))/normal.lvlPerWk;
+      if(Math.abs(ratio-1) > 0.6+quant)
+        outliers.push({from:x.from, to:x.to, days:Math.round(x.days), rate:x.lvlPerWk, ratio, high:ratio>1});
+    });
+  }
   return {
     gold:normal.gold, red:normal.red, combat:normal.combat,
-    metric, levelsPerWeek:normal.lvlPerWk, skipped,
+    metric, levelsPerWeek:normal.lvlPerWk, skipped, outliers,
     winFrom:addDays(win[win.length-1].to, -Math.round(acc)), winTo:win[win.length-1].to,
     winDays:Math.round(acc), winRows:win.length, winMl
   };
@@ -695,6 +711,21 @@ function renderHistory(){
       '<td class="center"><button class="rowdel" onclick="delHist('+idx+')">✕</button></td>';
     body.appendChild(tr);
   });
+  // 異常段提示
+  const wb=document.getElementById('histWarn');
+  if(wb){
+    const prod=deriveProduction();
+    const out=(prod&&prod.outliers)||[];
+    if(out.length){
+      wb.innerHTML='⚠️ 反推窗口內有速率異常的區間，正在影響產量基準：<br>'
+        + out.map(o=>'・<b>'+o.from.slice(5)+'→'+o.to.slice(5)+'</b>（'+o.days+' 天）'
+            + (Math.round(o.rate*10)/10)+' 級/週＝平均的 <b>'+(Math.round(o.ratio*10)/10)+'×</b>'
+            + (o.high?'　可能是活動一次性發放':'　可能是那段停滯或補記漏了')).join('<br>')
+        + '<br>若那不是可持續的產量，在該列勾「不計」，基準就不會被它拉走。'
+        + '<b>等級起點仍會照實採用</b>——資源你是真的拿到了，只是不該假設每週都拿得到。';
+      wb.classList.add('show');
+    } else wb.classList.remove('show');
+  }
   const btn=document.getElementById('histToggle');
   if(btn){
     if(!hidden){ btn.style.display='none'; }
@@ -1037,15 +1068,44 @@ async function checkUpdate(){
     if(!m || m[1]===APP_VERSION) return;
     document.getElementById('updateMsg').textContent='線上已有新版 '+m[1]+'，你現在開的是 '+APP_VERSION+'。';
     document.getElementById('updateBar').classList.add('show');
+    // 確定有新版了 → 順手叫 Service Worker 去換掉快取，下次冷開就是新版
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.ready.then(reg=>reg.update()).catch(()=>{});
+    }
   }catch(e){ /* 離線或被擋，安靜略過 */ }
 }
 // 帶上時間戳重新載入，強制繞過快取拿新檔
 function applyUpdate(){ location.replace(location.pathname+'?v='+Date.now()); }
 
-// 註冊 Service Worker：把整包存在手機裡，之後開啟不用網路。失敗就當沒這回事，功能不受影響。
+/* 註冊 Service Worker：把整包存在手機裡，之後開啟不用網路。失敗就當沒這回事，功能不受影響。
+   updateViaCache:'none' 很關鍵 —— 沒有它，瀏覽器檢查 sw.js 有沒有換版時
+   會拿 HTTP 快取裡那份舊的（GitHub Pages 給 10 分鐘），導致新版永遠裝不上去。*/
+let swReloading=false;
 function registerSW(){
   if(!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
-  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  const hadController = !!navigator.serviceWorker.controller;
+  // 新版 SW 接手 → 自動重載一次，這樣「關掉重開」就會是新版
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(swReloading || !hadController) return;   // 第一次安裝就接管，不用重載
+    const a=document.activeElement;
+    if(a && a.closest && a.closest('input,select,textarea')){   // 正在打字就別亂重載，改用橫幅提示
+      const bar=document.getElementById('updateBar');
+      if(bar){ document.getElementById('updateMsg').textContent='新版已下載完成。'; bar.classList.add('show'); }
+      return;
+    }
+    swReloading=true; location.reload();
+  });
+  /* 已經註冊過就「不要」再呼叫 register()：實測它回傳的 promise 會一直不 resolve，
+     並卡住整個 SW 工作佇列，讓後面的 update() 永遠不執行（關掉重開幾次都還是舊版）。
+     改成：沒註冊過才 register，已註冊就只在頁面 load 完後叫它去檢查新版。 */
+  if(!navigator.serviceWorker.controller){          // 還沒被 SW 接管 → 第一次註冊
+    navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'}).catch(()=>{});
+    return;
+  }
+  // 已被接管：只檢查新版，時機放在頁面 load 之後（太早發會被壓在佇列裡不動）
+  const after=fn=>{ if(document.readyState==='complete') setTimeout(fn,800);
+                    else window.addEventListener('load',()=>setTimeout(fn,800)); };
+  after(()=>{ navigator.serviceWorker.ready.then(reg=>reg.update()).catch(()=>{}); });
 }
 
 /* ================= toast ================= */
