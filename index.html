@@ -168,7 +168,7 @@
         </div>
         <div class="toolbar"><button class="btn sm" onclick="saveHourly()">更新</button></div>
         <div class="hint" id="hourlyEff"></div>
-        <div class="hint">主線後被動提升就回來更新這裡，推算會用「新時薪 × 168 × 校準倍率 k」同比例調整。k 由每週等級反推自動校準（每記一次新的一週就重算），假設你的活動/任務等收入跟時薪同比例變動。金幣填原始值、戰鬥填 k、紅球填原始值。</div>
+        <div class="hint">這一區<b>純參考、不進推算</b>。填了可以看出掛機佔你總收入多少——比例通常不高，所以主線讓時薪 +3% 並不代表產量 +3%。真正的產量變化，記兩週理論等級就會自己浮現。金幣填原始值、戰鬥填 k、紅球填原始值。</div>
       </div>
     </details>
   </div>
@@ -261,22 +261,18 @@
           <div>
             <label class="fld">產量反推平均週數</label>
             <input type="number" id="setWindow" min="2" max="20">
-          </div>
-          <div>
-            <label class="fld">主線加成自動估（依歷史）</label>
-            <select id="setMlAuto"><option value="1">開啟（推薦）</option><option value="0">關閉（用下方手填 %）</option></select>
-          </div>
-          <div>
-            <label class="fld">主線加成 %（自動估關閉時使用）</label>
-            <input type="number" id="setBoost" step="0.5">
+            <div class="hint" style="margin-top:4px">往回取這麼多「天數」（×7）來平均，跟你記了幾列無關。記得密一點不會改變結果。</div>
           </div>
           <div>
             <label class="fld">推算延伸週數（圖）</label>
             <input type="number" id="setProjWeeks" min="4" max="200">
           </div>
         </div>
-        <div class="hint" style="margin-top:10px">成本成長率設定已移除：新規格證實 801–1000 成本凍結，公式推算會嚴重失真，成本一律以成本表手填實測值為準。</div>
-        <label class="fld" style="margin-top:12px">主線開啟月份（每次開啟＝產量永久提升，複利累加）</label>
+        <div class="hint" style="margin-top:10px">
+          <b>主線加成參數已移除。</b>推算完全以理論等級反推為準——主線、裝備、活動帶來的產量變化，記兩週理論等級就會自動反映，不需要也不該再猜一個百分比。<br>
+          成本成長率同樣已移除：801–1000 成本凍結，公式推算會失真，成本一律以成本表手填實測值為準。
+        </div>
+        <label class="fld" style="margin-top:12px">主線開啟月份（僅用於新增列時自動打勾，不影響推算）</label>
         <div class="mlmonths" id="mlMonths"></div>
         <div class="toolbar"><button class="btn sm" onclick="saveSettings()">套用設定</button></div>
       </div>
@@ -310,7 +306,7 @@
 <script>
 /* ================= 版本 ================= */
 // 改版時把這行的日期／字母往上加，頁面會自動偵測到並提示載入新版
-const APP_VERSION = '2026-08-14c';   // 改版時 sw.js 的 SW_VERSION 要一起改
+const APP_VERSION = '2026-08-15a';   // 改版時 sw.js 的 SW_VERSION 要一起改
 
 /* ================= 狀態與預設資料 ================= */
 const LS_KEY = 'syncCalc_v1';
@@ -349,7 +345,7 @@ const SEED_COST = [
 ];
 // 成本表規格版本：與 state 內不同時，成本表會被覆蓋為上表（歷史紀錄與設定保留）
 const COST_SPEC_VERSION = '2026-08-14';
-const DEFAULT_SETTINGS = { windowWeeks:4, boostPct:3, redBonus:504, projWeeks:52, mainlineMonths:[2,4,8,11], mainlineAuto:true };
+const DEFAULT_SETTINGS = { windowWeeks:4, projWeeks:52, mainlineMonths:[2,4,8,11] };
 const BACKUP_REMIND_DAYS = 7; // 有未備份改動且距上次備份超過此天數 → 提醒
 // 每小時被動產量（僅作參考/交叉檢查，不進推算）。金幣為原始值、戰鬥為 k、紅球為原始值
 const SEED_HOURLY = { gold:70919, red:115, combat:726 };
@@ -371,7 +367,7 @@ let costMigrated = false;   // 本次載入是否覆蓋過舊成本表（開啟�
 (function migrate(){
   state.settings = Object.assign({}, DEFAULT_SETTINGS, state.settings || {});
   // 舊版的成長率設定已無意義（801–1000 凍結），移除避免殘留
-  delete state.settings.costGold; delete state.settings.costCombat; delete state.settings.costRed;
+  ['costGold','costCombat','costRed','boostPct','mainlineAuto','redBonus'].forEach(k=>delete state.settings[k]);
   if(!state.hourly) state.hourly = {...SEED_HOURLY};
   // 校準基準時薪：記錄「最近一次週資料當下的時薪」，用來配對反推產量算出有效倍率 k
   if(!state.calibHourly) state.calibHourly = {...state.hourly};
@@ -497,57 +493,53 @@ function deriveProduction(){
     const weeks=days/7;
     const cs = p1.level>p0.level ? costSum(p0.level,p1.level) : {gold:0,red:0,combat:0};
     const dl = Math.max(0, p1.level-p0.level);
-    iv.push({gold:cs.gold/weeks, red:cs.red/weeks, combat:cs.combat/weeks, lvlPerWk:dl/weeks, weeks, mainline:p1.mainline});
+    iv.push({from:p0.date, to:p1.date, days, gold:cs.gold/weeks, red:cs.red/weeks, combat:cs.combat/weeks, lvlPerWk:dl/weeks, weeks, mainline:p1.mainline});
   }
   if(!iv.length) return null;
   const avg = arr => { let g=0,r=0,c=0,l=0,wk=0; arr.forEach(x=>{g+=x.gold*x.weeks;r+=x.red*x.weeks;c+=x.combat*x.weeks;l+=x.lvlPerWk*x.weeks;wk+=x.weeks;}); return wk>0?{gold:g/wk,red:r/wk,combat:c/wk,lvlPerWk:l/wk}:null; };
-  // 平常週產量基準：最近 w 個「非主線」區間（不足則退回最近 w 個全部區間）
-  let normalIv = iv.filter(x=>!x.mainline);
-  if(normalIv.length<1) normalIv = iv.slice();
-  const normal = avg(normalIv.slice(-w));
-  if(!normal) return null;                    // 資料異常（例如日期壞掉）→ 當作無法反推，不要往下爆掉
-  // 主線加成 M：全歷史 主線週 vs 平常週
-  const mlIv=iv.filter(x=>x.mainline), nlIv=iv.filter(x=>!x.mainline);
-  let M, mlAuto=false;
-  if(S.mainlineAuto!==false && mlIv.length>=1 && nlIv.length>=1){
-    const ml=avg(mlIv), nl=avg(nlIv);
-    M = (nl.lvlPerWk>0)? (ml.lvlPerWk/nl.lvlPerWk) : 1;
-    if(!isFinite(M)||M<=0) M=1;
-    mlAuto=true;
-  } else {
-    M = 1 + (S.boostPct||0)/100; // 手動或資料不足時的後備
+
+  /* 反推窗口：往回累積「實際天數」直到滿 w 週 —— 不是往回數 w 列。
+     否則記錄頻率會左右結果：一週記一次 = 28 天，三天記一次 = 12 天，
+     窗口一短，最近的波動就被放大，同樣的真實速度會算出差很多的數字。 */
+  const targetDays=Math.max(1,w)*7;
+  const win=[]; let acc=0;
+  for(let i=iv.length-1;i>=0;i--){
+    const remain=targetDays-acc; if(remain<=1e-9) break;
+    const useDays=Math.min(iv[i].days, remain);   // 跨出窗口邊界的那一段只按比例計入，窗口才會剛好是 N 週
+    win.unshift(Object.assign({}, iv[i], {useWeeks:useDays/7}));
+    acc+=useDays;
   }
+
+  /* 窗口內一律照實平均，不做任何「主線折算」。
+     理論等級反推本來就會把主線、裝備、活動……所有產量變化一起量進來，
+     不需要（也不該）另外猜一個主線倍率去修正它。 */
+  const winMl=win.filter(x=>x.mainline).length;
+  const normal = avg(win.map(x=>({gold:x.gold, red:x.red, combat:x.combat, lvlPerWk:x.lvlPerWk, weeks:x.useWeeks})));
+  if(!normal) return null;                    // 資料異常（例如日期壞掉）→ 當作無法反推，不要往下爆掉
   return {
     gold:normal.gold, red:normal.red, combat:normal.combat,
-    metric, levelsPerWeek:normal.lvlPerWk,
-    mainlineMult:M, mainlineAuto:mlAuto,
-    mlLvlPerWk: mlIv.length?avg(mlIv).lvlPerWk:null,
-    intervals:Math.min(w,normalIv.length), mlIntervals:mlIv.length, nlIntervals:nlIv.length,
-    skipped
+    metric, levelsPerWeek:normal.lvlPerWk, skipped,
+    winFrom:addDays(win[win.length-1].to, -Math.round(acc)), winTo:win[win.length-1].to,
+    winDays:Math.round(acc), winRows:win.length, winMl
   };
 }
 
-/* ================= 有效產量（時薪校準） =================
-   base = 反推平常週產量 × (目前時薪 / 校準基準時薪)。
-   時薪不變時 factor=1（= 純反推）；更新時薪後整體同比例縮放。 */
+/* ================= 有效產量 =================
+   推算一律以「理論等級反推」為唯一依據，不再用時薪去縮放。
+   理由：理論增幅本來就把被動、活動、任務、主線……所有來源一起量進去了，
+   再拿只佔約兩成的被動時薪去等比例放大整包產量，只會引入錯誤。
+   時薪改成純參考（見下方 passiveShare），拿來交叉檢查而非驅動推算。 */
 function effectiveProduction(){
   const prod=deriveProduction(); if(!prod) return null;
-  const cal=state.calibHourly||{}, hr=state.hourly||{};
-  const f=k=> (cal[k]>0 && hr[k]>0) ? hr[k]/cal[k] : 1;
-  const factor={gold:f('gold'), red:f('red'), combat:f('combat')};
-  return Object.assign({}, prod, {
-    gold:prod.gold*factor.gold, red:prod.red*factor.red, combat:prod.combat*factor.combat,
-    factor, raw:prod
-  });
+  return Object.assign({}, prod, {raw:prod});
 }
-// 校準倍率 k（每週總產量 ÷ 被動時薪×168），每資源一個，供顯示
-function calibMultipliers(){
+// 被動佔比：一週被動總量 ÷ 反推週產量。看得出你的收入有多少來自掛機。
+function passiveShare(){
   const prod=deriveProduction(); if(!prod) return null;
-  const cal=state.calibHourly||{};
-  const kk=(weekly,hrRaw,isGold)=>{ if(!hrRaw) return null; const passive=(isGold? hrRaw/1000 : hrRaw)*168; return passive>0? weekly/passive : null; };
-  return { gold:kk(prod.raw?prod.raw.gold:prod.gold, cal.gold, true),
-           red:kk(prod.red, cal.red, false),
-           combat:kk(prod.combat, cal.combat, false) };
+  const hr=state.hourly||{};
+  const sh=(weekly,hrRaw,isGold)=>{ if(!hrRaw||!weekly) return null;
+    const passive=(isGold? hrRaw/1000 : hrRaw)*168; return passive/weekly; };
+  return { gold:sh(prod.gold,hr.gold,true), red:sh(prod.red,hr.red,false), combat:sh(prod.combat,hr.combat,false) };
 }
 
 /* ================= 推算引擎 ================= */
@@ -559,8 +551,10 @@ function project(stop){
   const last=h[h.length-1];
   const startLevel = (last.theo!=null && last.theo!=='' && !isNaN(+last.theo)) ? +last.theo : +last.actual;
   let cur=startLevel, date=last.date;
-  // 平常週基準產量（固定），主線月份的那週 ×M
-  const baseG=prod.gold, baseR=prod.red, baseC=prod.combat, M=prod.mainlineMult;
+  /* 週產量固定用最近反推出來的值往後推。
+     不再對主線月份加乘 —— 舊版會讓 8 月衝高、9~10 月無故掉回去、11 月再衝，
+     但主線是永久提升，不是週期性活動。真有變化，記兩週理論等級就自己反映出來了。 */
+  const baseG=prod.gold, baseR=prod.red, baseC=prod.combat;
   const S=state.settings;
   const path=[{date, level:cur, bottleneck:null}];
   let overFlag=false, guard=0;
@@ -570,11 +564,8 @@ function project(stop){
     if(stop.type==='level' && cur>=stop.value) break;
     if(stop.type==='date' && parseDate(date) >= parseDate(stop.value)) break;
 
-    // 前進一週：落在主線月份 → 該週產量 ×M（每次主線都套用，反映週期性衝量）
     const nd=addDays(date,7);
-    const isML = S.mainlineMonths.includes(parseDate(nd).getMonth()+1);
-    const mult = isML ? M : 1;
-    const g=baseG*mult, r=baseR*mult, c=baseC*mult;
+    const g=baseG, r=baseR, c=baseC;
     const seg=segmentOf(Math.floor(cur));
     if(!seg) return {error:'成本表沒有涵蓋等級 '+Math.floor(cur)+'，請到成本表補列。'};
     if(seg._over) overFlag=true;
@@ -636,35 +627,34 @@ function renderSummary(){
   }
   if(prod && seg){
     const sg=prod.gold/seg.gold, sr=prod.red/seg.red, sc=prod.combat/seg.combat;
-    const speed=Math.min(sg,sr,sc);           // 平常週速率
-    const mlSpeed=speed*prod.mainlineMult;    // 主線週速率
+    const speed=Math.min(sg,sr,sc);
     const bn = speed===sg?'金幣':(speed===sr?'紅球':'戰鬥');
     // 新規格：三資源被設計成幾乎同時卡，差距 <2% 時不該報單一瓶頸
     const spread = speed>0 ? (Math.max(sg,sr,sc)-speed)/speed : 0;
     const bnTxt = spread<0.02 ? bn+'（三者幾乎同時卡，差距 '+(Math.round(spread*1000)/10)+'%）' : bn;
     document.getElementById('sumSpeed').textContent= (Math.round(speed*100)/100)+' 級/週';
-    document.getElementById('sumBasis').textContent= (prod.metric==='theo'?'理論反推':'實際增幅')+'・平常週'+prod.intervals+'週'+((prod.raw&&prod.raw.skipped)?'（排除 '+prod.raw.skipped+' 段）':'');
-    const mlPct=Math.round((prod.mainlineMult-1)*100);
-    const mlTxt = prod.mainlineAuto
-      ? '主線加成 <span class="hl">+'+mlPct+'%</span>（歷史自動估：主線 '+ (prod.mlLvlPerWk?(Math.round(prod.mlLvlPerWk*100)/100):'—') +' vs 平常 '+(Math.round(prod.levelsPerWeek*100)/100)+' 級/週，主線週約 '+(Math.round(mlSpeed*100)/100)+' 級/週）'
-      : '主線加成 +'+mlPct+'%（手動/資料不足後備）';
-    // 每小時被動交叉檢查
+    const R=prod.raw||prod;
+    document.getElementById('sumBasis').innerHTML=
+      (prod.metric==='theo'?'理論反推':'實際增幅')
+      +'<br><span style="font-size:11px;color:var(--muted);font-weight:400">'
+      + R.winFrom.slice(5)+' → '+R.winTo.slice(5)+'（'+R.winDays+' 天 / '+R.winRows+' 段'
+      + (R.winMl?'，含 '+R.winMl+' 段主線':'')
+      + (R.skipped?'，排除 '+R.skipped+' 段':'') + '）</span>';
+    // 每小時被動：純交叉檢查，不影響推算
     let hourlyTxt='';
     const hr=state.hourly||{};
     if(hr.gold||hr.red||hr.combat){
       // 金幣時薪為原始值(成本表為k)→÷1000；戰鬥時薪已是k；紅球皆原始值
-      const passLvlG=(hr.gold/1000*168)/seg.gold, passLvlR=(hr.red*168)/seg.red, passLvlC=(hr.combat*168)/seg.combat;
-      const passLvl=Math.min(passLvlG,passLvlR,passLvlC);
-      const ratio = passLvl>0 ? (speed/passLvl) : null;
-      const fct=prod.factor||{gold:1,red:1,combat:1};
-      const scaled = (Math.abs(fct.gold-1)+Math.abs(fct.red-1)+Math.abs(fct.combat-1))>0.001;
-      hourlyTxt = '<br>每小時被動：<span class="c-gold">金幣 '+fmtNum(hr.gold)+'</span>、<span class="c-red">紅球 '+fmtNum(hr.red)+'</span>、<span class="c-combat">戰鬥 '+fmtK(hr.combat)+'</span>＝約 '+(Math.round(passLvl*100)/100)+' 級/週被動'
-        + (ratio? '，總收入約是被動的 <span class="hl">'+(Math.round(ratio*10)/10)+'×</span>（其餘來自活動/任務/儲值）。':'。')
-        + (scaled? ' <span class="hl">時薪已相對校準基準縮放推算（金'+(Math.round(fct.gold*100)/100)+'× 紅'+(Math.round(fct.red*100)/100)+'× 戰'+(Math.round(fct.combat*100)/100)+'×）</span>':'');
+      const passLvl=Math.min((hr.gold/1000*168)/seg.gold, (hr.red*168)/seg.red, (hr.combat*168)/seg.combat);
+      const ps=passiveShare()||{};
+      const pct=x=> x!=null? Math.round(x*1000)/10+'%' : '—';
+      hourlyTxt = '<br>每小時被動＝約 '+(Math.round(passLvl*100)/100)+' 級/週，'
+        + '只佔你總產量的 <span class="hl">'+pct(ps.gold)+'（金）/ '+pct(ps.red)+'（紅）/ '+pct(ps.combat)+'（戰）</span>'
+        + '，其餘來自活動、任務、寶箱等。<b>推算不吃這個數字</b>，它只是拿來對照的。';
     }
     document.getElementById('prodNote').innerHTML=
-      '平常週產量估計：<span class="c-gold">金幣 '+fmtK(prod.gold)+'</span>、<span class="c-red">紅球 '+fmtNum(prod.red)+'</span>、<span class="c-combat">戰鬥 '+fmtK(prod.combat)+'</span>。'
-      +'目前瓶頸：<span class="hl">'+bnTxt+'</span>（'+(prod.metric==='theo'?'理論反推':'實際等級打底，累積理論資料後自動升級')+'）。<br>'+mlTxt+'。'+hourlyTxt;
+      '週產量估計：<span class="c-gold">金幣 '+fmtK(prod.gold)+'</span>、<span class="c-red">紅球 '+fmtNum(prod.red)+'</span>、<span class="c-combat">戰鬥 '+fmtK(prod.combat)+'</span>。'
+      +'目前瓶頸：<span class="hl">'+bnTxt+'</span>（'+(prod.metric==='theo'?'理論反推，已涵蓋主線／裝備／活動等所有來源':'實際等級打底，累積理論資料後自動升級')+'）。'+hourlyTxt;
   } else {
     document.getElementById('sumSpeed').textContent='—';
     document.getElementById('sumBasis').textContent='—';
@@ -824,10 +814,11 @@ function renderHourly(){
   document.getElementById('hrCombat').value= hr.combat!=null?hr.combat:'';
   const eff=document.getElementById('hourlyEff');
   if(eff){
-    const k=calibMultipliers();
-    if(k){
-      const f=x=> x!=null?(Math.round(x*10)/10)+'×':'—';
-      eff.innerHTML='校準倍率 k（每週總產量 ÷ 被動×168）：<b>金 '+f(k.gold)+'　紅 '+f(k.red)+'　戰 '+f(k.combat)+'</b>。更新時薪後，推算 = 新時薪 × 168 × k，整體同比例調整。';
+    const ps=passiveShare();
+    if(ps){
+      const f=x=> x!=null?(Math.round(x*1000)/10)+'%':'—';
+      eff.innerHTML='被動佔總產量：<b>金 '+f(ps.gold)+'　紅 '+f(ps.red)+'　戰 '+f(ps.combat)+'</b>。'
+        +'意思是掛機只貢獻這麼多，其餘來自活動／任務／寶箱。所以「時薪 +3%」不等於「產量 +3%」——這也是推算不用時薪、改用理論等級反推的原因。';
     } else eff.textContent='';
   }
 }
@@ -837,16 +828,13 @@ function saveHourly(){
     red:+document.getElementById('hrRed').value||0,
     combat:+document.getElementById('hrCombat').value||0
   };
-  // 只更新時薪 → 不重新快照校準基準，讓推算按 k 同比例縮放
-  save(); renderAll(); toast('時薪已更新，推算已按 k 同比例調整');
+  save(); renderAll(); toast('時薪已更新（僅供對照，不影響推算）');
 }
 
 /* ================= 設定 ================= */
 function renderSettings(){
   const S=state.settings;
   document.getElementById('setWindow').value=S.windowWeeks;
-  document.getElementById('setBoost').value=S.boostPct;
-  document.getElementById('setMlAuto').value=S.mainlineAuto?'1':'0';
   document.getElementById('setProjWeeks').value=S.projWeeks;
   const box=document.getElementById('mlMonths'); box.innerHTML='';
   const names=['','1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
@@ -859,8 +847,6 @@ function renderSettings(){
 function saveSettings(){
   const S=state.settings;
   S.windowWeeks=Math.max(2,+document.getElementById('setWindow').value||4);
-  S.boostPct=+document.getElementById('setBoost').value||0;
-  S.mainlineAuto=document.getElementById('setMlAuto').value==='1';
   S.projWeeks=Math.max(4,+document.getElementById('setProjWeeks').value||52);
   S.mainlineMonths=[...document.querySelectorAll('#mlMonths input:checked')].map(x=>+x.dataset.m);
   save(); renderAll(); toast('設定已套用');
@@ -989,7 +975,7 @@ function importData(){
     if(!obj.history||!obj.costTable) throw new Error('格式不符');
     state=obj;
     if(!state.settings) state.settings={...DEFAULT_SETTINGS};
-    delete state.settings.costGold; delete state.settings.costCombat; delete state.settings.costRed;
+    ['costGold','costCombat','costRed','boostPct','mainlineAuto','redBonus'].forEach(k=>delete state.settings[k]);
     let migrated=false;
     if(state.costSpecVersion !== COST_SPEC_VERSION){   // 舊備份 → 成本表換成新實測值，紀錄保留
       state.costTable=JSON.parse(JSON.stringify(SEED_COST));
